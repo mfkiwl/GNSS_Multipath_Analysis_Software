@@ -301,7 +301,7 @@ from gnssmultipath import GNSS_MultipathAnalysis
 
 rinObs_file = 'OPEC00NOR_S_20220010000_01D_30S_MO_3.04'
 SP3_file    = 'SP3_20220010000.eph'
-analysisResults = GNSS_MultipathAnalysis(rinex_obs_file=rinObs_file, sp3NavFilename_1=SP3_file)
+analysisResults = GNSS_MultipathAnalysis(rinObsFilename=rinObs_file, sp3NavFilename_1=SP3_file)
 ```
 
 ### Run a multipath analysis using a RINEX navigation file with SNR, a defined datarate for ephemerides and with an elevation angle cut off at 10°
@@ -315,7 +315,7 @@ output_folder = 'C:/Users/xxxx/Results_Multipath'
 cutoff_elevation_angle = 10  # drop satellites lower than 10 degrees
 nav_data_rate = 60  # desired datarate for ephemerides (to improve speed)
 
-analysisResults = GNSS_MultipathAnalysis(rinex_obs_file=rinObs_file,
+analysisResults = GNSS_MultipathAnalysis(rinObsFilename=rinObs_file,
                                          broadcastNav1=rinNav_file,
                                          include_SNR=True,
                                          outputDir=output_folder,
@@ -354,7 +354,7 @@ from gnssmultipath import GNSS_MultipathAnalysis
 
 rinObs_file = 'OPEC00NOR_S_20220010000_01D_30S_MO_3.04'
 SP3_file    = 'SP3_20220010000.eph'
-analysisResults = GNSS_MultipathAnalysis(rinex_obs_file=rinObs_file, sp3NavFilename_1=SP3_file, plotEstimates=False)
+analysisResults = GNSS_MultipathAnalysis(rinObsFilename=rinObs_file, sp3NavFilename_1=SP3_file, plotEstimates=False)
 ```
 
 ### Run analysis and use the Zstandard compression algorithm (ZSTD) to compress the pickle file storing the results
@@ -363,7 +363,7 @@ from gnssmultipath import GNSS_MultipathAnalysis
 
 rinObs_file = 'OPEC00NOR_S_20220010000_01D_30S_MO_3.04'
 SP3_file    = 'SP3_20220010000.eph'
-analysisResults = GNSS_MultipathAnalysis(rinex_obs_file=rinObs_file, sp3NavFilename_1=SP3_file, save_results_as_compressed_pickle=True)
+analysisResults = GNSS_MultipathAnalysis(rinObsFilename=rinObs_file, sp3NavFilename_1=SP3_file, save_results_as_compressed_pickle=True)
 ```
 
 
@@ -414,7 +414,7 @@ sp3 = 'Testfile_20220101.eph'
 # Set desired time for when to estimate position and which system to use
 desired_time = np.array([2022, 1, 1, 1, 5, 30.0000000])
 desired_system = "G"  # GPS
-gnsspos, stats = GNSSPositionEstimator(rinObs,
+gnsspos, stats = GNSSPositionEstimator(rinObsFilename=rinObs,
                                     sp3_file = sp3,
                                     desired_time = desired_time,
                                     desired_system = desired_system,
@@ -475,7 +475,7 @@ gnsspos, stats = GNSSPositionEstimator(rinObs,
                                     elevation_cut_off_angle = 10,
                                     crs=desired_crs).estimate_position()
 
-print('Estimated coordinates in ECEF (m):\n' + '\n'.join([f'{axis} = {coord}' for axis, coord in zip(['Eastin', 'Northing', 'Height (ellipoidal)'], np.round(gnsspos[:-1], 3))]))
+print('Estimated coordinates in ECEF (m):\n' + '\n'.join([f'{axis} = {coord}' for axis, coord in zip(['Easting', 'Northing', 'Height (ellipsoidal)'], np.round(gnsspos[:-1], 3))]))
 ```
 
 
