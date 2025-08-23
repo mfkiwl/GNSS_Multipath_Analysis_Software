@@ -1870,17 +1870,21 @@ def readRinexObs211(filename, readSS=None, readLLI=None, includeAllGNSSsystems=N
     for k in np.arange(0, nGNSSsystems):
         # Always extract scalar from max_sat[k] for shape arguments
         max_sat_k = int(max_sat[k].item()) if hasattr(max_sat[k], "item") else int(max_sat[k])
-        if GNSSsystems[k+1] == 'G':
-            GNSS_SVs['G'] = np.zeros([nepochs, max_sat_k + 1])
+        if GNSSsystems[k + 1] == 'G':
+            max_sat[k] = max_GPS_PRN
+            GNSS_SVs['G'] = np.zeros([nepochs, int(max_sat[k].item() + 1)])
             GNSSsystems_full_names[k] = "GPS"
-        elif GNSSsystems[k+1] == 'R':
-            GNSS_SVs['R'] = np.zeros([nepochs, max_sat_k + 1])
+        elif GNSSsystems[k + 1] == 'R':
+            max_sat[k] = max_GLONASS_PRN
+            GNSS_SVs['R'] = np.zeros([nepochs, int(max_sat[k].item() + 1)])
             GNSSsystems_full_names[k] = "GLONASS"
-        elif GNSSsystems[k+1] == 'E':
-            GNSS_SVs['E'] = np.zeros([nepochs, max_sat_k + 1])
+        elif GNSSsystems[k + 1] == 'E':
+            max_sat[k] = max_Galileo_PRN
+            GNSS_SVs['E'] = np.zeros([nepochs, int(max_sat[k].item() + 1)])
             GNSSsystems_full_names[k] = "Galileo"
-        elif GNSSsystems[k+1] == 'C':
-            GNSS_SVs['C'] = np.zeros([nepochs, max_sat_k + 1])
+        elif GNSSsystems[k + 1] == 'C':
+            max_sat[k] = max_Beidou_PRN
+            GNSS_SVs['C'] = np.zeros([nepochs, int(max_sat[k].item() + 1)])
             GNSSsystems_full_names[k] = "BeiDou"
         else:
             print(f'ERROR(readRinexObs211): Only following GNSS systems are compatible with this program: GPS, GLONASS, Galileo, Beidou. {GNSSsystems[k]} is not valid')
@@ -2997,8 +3001,9 @@ def rinexReadObsBlock211(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readS
     # Initialize variables
     Obs = np.empty([numSV, max_n_obs_Types])
     if nObsCodes > 5:
-        factor = 2
-        nLines = factor*numSV
+        # There are three lines
+        factor = (nObsCodes // 5) + 1
+        nLines = factor * numSV
     else:
         factor = 1
         nLines = factor*numSV
@@ -3012,8 +3017,9 @@ def rinexReadObsBlock211(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readS
     # number of satellites excluded so far
     removed_sat = 0
     desiredGNSSsystems = list(GNSSsystems.values())
-    pattern = r"^\s*[0-9]+\.[0-9]+\s*"
-    pattern2 = r'\s*\d+\.\d+'
+    #There are cases where matching negative values occurs
+    pattern = r"^\s*-?[0-9]+\.[0-9]+\s*"
+    pattern2 = r'\s*-?\d+\.\d+'
     pattern4 = r'^\s*[A-Za-z]+[A-Za-z0-9]*(?:[\s]+[A-Za-z]+[A-Za-z0-9]*)*\s*$'
     ## -- Gobble up observation block
     for sat in np.arange(0,numSV):
@@ -3044,7 +3050,8 @@ def rinexReadObsBlock211(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readS
                 if obsIndex < 5:
                     charPos = 1+(obsIndex)*16
                 else:
-                    charPos = 1+(obsIndex-5)*16
+                    # There are three lines
+                    charPos = 1 + (obsIndex % 5) * 16
 
                 ## check that the current observation of the current GNSS system
                 ## is not on the list of obs types to be excluded
@@ -3089,7 +3096,8 @@ def rinexReadObsBlock211(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readS
                     SS[sat - removed_sat, obs_num]  = newSS
 
                     # if np.mod(obs_num+1, 5) == 0 and nObsCodes > 5 and factor*sat < factor*numSV:
-                    if np.mod(obs_num+1, 5) == 0 and nObsCodes>5 and nNew_line < factor:
+                    # Matches the case where three lines are read
+                    if np.mod(obs_num+1, 5) == 0 and nObsCodes>5 and nNew_line <= factor:
                         nNew_line += 1
                         line = fid.readline().rstrip()
 
