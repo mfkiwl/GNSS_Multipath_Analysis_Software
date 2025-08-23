@@ -111,6 +111,12 @@ class RinexNav:
         try:
             with open(filename, 'r') as file:
                 lines = file.readlines()
+                #Get the navigation file version
+                firstline = lines[0]
+                if '2' in firstline:
+                    version = 2
+                elif '3' in firstline:
+                    version = 3
                 for line in lines:
                     line = line.rstrip()
                     header.append(line)
@@ -119,7 +125,7 @@ class RinexNav:
         except OSError as e:
             print(f"Could not open/read file: {filename}\nError: {e}")
             return
-        return header
+        return version,header
 
 
 
@@ -180,7 +186,6 @@ class Rinex_v2_Reader(RinexNav):
 
         while line != '':
             block_arr = np.array([])
-
             ## -- Read first line of navigation message
             line = filnr.readline().rstrip()
 
@@ -192,9 +197,13 @@ class Rinex_v2_Reader(RinexNav):
                     line = line[:22] + " " + line[22:]
                 if line[idx] == 'e' or line[idx] == 'E' and idx !=0:
                     line = line[:idx+4] + " " + line[idx+4:]
-
-            fl = [el for el in line.split(" ") if el != ""]
-            block_arr =np.append(block_arr,np.array([fl]))
+            nl = [el for el in line.split(" ") if el != ""]
+            if nl:
+                # Keep consistent with navigation file version 3
+                nl[0] = 'G' + nl[0]
+                nl[1] = '20' + nl[1]
+                nl[6] = int(float(nl[6]))
+            block_arr =np.append(block_arr,np.array([nl]))
             block_arr = block_arr.reshape(1,len(block_arr))
 
             ## Looping throug the next 7-lines for current message (satellitte)
@@ -202,10 +211,10 @@ class Rinex_v2_Reader(RinexNav):
                 line = filnr.readline().rstrip()
                 ## -Replacing 'D' with 'E'
                 line = line.replace('D','E')
-
                 ## -- Have to add space between datacolums where theres no whitespace
                 for idx, val in enumerate(line):
-                    if line[idx] == 'E':
+                    #Increase judgment e
+                    if line[idx] == 'E' or line[idx] == 'e':
                         line = line[:idx+4] + " " + line[idx+4:]
 
                 ## --Reads the line vector nl from the text string line and adds navigation
@@ -227,7 +236,6 @@ class Rinex_v2_Reader(RinexNav):
 
         filnr.close()
         n_eph = len(data)
-        data = data.astype(float)
         if dataframe == 'yes' or dataframe == 'YES':
             data = DataFrame(data)
 
@@ -287,7 +295,7 @@ class Rinex_v3_Reader(RinexNav):
             if not all(letter in self.valid_systems for letter in sys):
                 raise ValueError("Invalid GNSS system in desired_GNSS list. Must be one these ['G','R','E','C'].")
 
-        header = self.read_header_lines(filename)
+        version, header = self.read_header_lines(filename)
         nav_lines = self.filter_data_rinex_nav(filename, desired_GNSS, data_rate=data_rate)
         current_epoch = 0
         n_update_break = max(1, len(nav_lines) // 10)

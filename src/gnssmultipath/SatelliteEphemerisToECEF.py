@@ -11,7 +11,7 @@ import numpy as np
 from numpy import ndarray
 from tqdm import tqdm
 from gnssmultipath.Geodetic_functions import date2gpstime_vectorized, get_leap_seconds, gpstime2date_arrays, ECEF2enu, ECEF2geodb
-from gnssmultipath.RinexNav import Rinex_v3_Reader
+from gnssmultipath.RinexNav import Rinex_v3_Reader,Rinex_v2_Reader,RinexNav
 
 
 
@@ -388,9 +388,16 @@ class SatelliteEphemerisToECEF:
         into one data array.
         """
         nav_files = [nav_file for nav_file in rinex_nav_file if nav_file != ""]
-        first_nav_data = Rinex_v3_Reader().read_rinex_nav(nav_files[0], data_rate=data_rate)
-        data = np.concatenate([first_nav_data['ephemerides']] + [Rinex_v3_Reader().read_rinex_nav(nav_file, data_rate=data_rate)['ephemerides'] for nav_file in nav_files[1:]], axis=0)
-        glonass_fcn = first_nav_data.get('glonass_fcn', None)
+        nav_datas = []
+        for  nav_file in nav_files:
+            version, header = RinexNav().read_header_lines(nav_file)
+            if version == 2:
+                nav_data = Rinex_v2_Reader().read_rinex_nav(nav_file)
+            elif version == 3:
+                nav_data = Rinex_v3_Reader().read_rinex_nav(nav_file, data_rate=data_rate)
+            nav_datas.append(nav_data['ephemerides'])
+        data = np.concatenate(nav_datas, axis=0)
+        glonass_fcn = nav_data.get('glonass_fcn', None)
         data = np.unique(data, axis=0) # ensure no duplicates
         return data, glonass_fcn
 
