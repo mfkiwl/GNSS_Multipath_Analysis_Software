@@ -110,7 +110,7 @@ class RinexNav:
         header = []
         try:
             with open(filename, 'r') as file:
-                lines = file.readlines(
+                lines = file.readlines()
                 #Get the navigation file version
                 firstline = lines[0]
                 if '2' in firstline:
