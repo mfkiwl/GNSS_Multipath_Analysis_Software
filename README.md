@@ -7,10 +7,11 @@
 [![Downloads](https://pepy.tech/badge/gnssmultipath)](https://pepy.tech/project/gnssmultipath)
 
 
+## Introduction
 
+GNSS Multipath Analysis is a software tool for analyzing the multipath effect on Global Navigation Satellite Systems (GNSS). The core functionality is based on the MATLAB software [GNSS_Receiver_QC_2020](https://gitlab.com/bjro/GNSS_reading_protocol/-/tree/main/GNSS_Receiver_QC_2020), but has been adapted to Python and includes additional features. A considerable part of the results has been validated by comparing the results with estimates from RTKLIB. This software will be further developed, and feedback and suggestions are therefore gratefully received. Don't hesitate to report if you find bugs or missing functionality. Either by e-mail or by raising an issue here in GitHub. Contributions are also welcome!
 
 ## Table of Contents
-- [Introduction](#introduction)
 - [Features](#features)
 - [Installation](#installation)
   - [Prerequisites](#prerequisites)
@@ -40,9 +41,7 @@
 	- [Interpolating Precise Satellite Coordinates from SP3 file Using Neville's Algorithm](#interpolating-precise-satellite-coordinates-from-sp3-file-using-nevilles-algorithm)
 	- [Estimating the Receiver Position Using Least Squares](#estimating-the-receiver-position-using-least-squares)
 	- [Statistical Parameters of the estimated position](#statistical-parameters-of-the-estimated-position)
-## Introduction
 
-GNSS Multipath Analysis is a software tool for analyzing the multipath effect on Global Navigation Satellite Systems (GNSS). The core functionality is based on the MATLAB software [GNSS_Receiver_QC_2020](https://gitlab.com/bjro/GNSS_reading_protocol/-/tree/main/GNSS_Receiver_QC_2020), but has been adapted to Python and includes additional features. A considerable part of the results has been validated by comparing the results with estimates from RTKLIB. This software will be further developed, and feedback and suggestions are therefore gratefully received. Don't hesitate to report if you find bugs or missing functionality. Either by e-mail or by raising an issue here in GitHub.
 
 ## Features
 - Estimates the code multipath for all GNSS systems (GPS, GLONASS, Galileo, and BeiDou).
