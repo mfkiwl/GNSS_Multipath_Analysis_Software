@@ -213,7 +213,8 @@ def readSP3Nav(filename, desiredGNSSsystems=None):
             sys_dict['R'] = PRN_dict_Glonass
             sys_dict['E'] = PRN_dict_Galileo
             sys_dict['C'] = PRN_dict_BeiDou
-            sat_pos[sys] = sys_dict[sys]
+            for s in desiredGNSSsystems:
+                sat_pos[s] = sys_dict[s]
 
         #Get the next line
         line = fid.readline().rstrip()
