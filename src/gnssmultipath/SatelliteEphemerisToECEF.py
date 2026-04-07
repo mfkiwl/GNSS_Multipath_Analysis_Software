@@ -84,9 +84,9 @@ class GLOStateVec2ECEF:
         while np.any(np.abs(tdiff) > 1e-9):
             tt = np.where(np.abs(tdiff) < tstep, tdiff, tt)
             k1 = self.glonass_diff_eq(state, acc)
-            k2 = self.glonass_diff_eq(state + k1 * tt[:, None] / 2, -acc)
-            k3 = self.glonass_diff_eq(state + k2 * tt[:, None] / 2, -acc)
-            k4 = self.glonass_diff_eq(state + k3 * tt[:, None], -acc)
+            k2 = self.glonass_diff_eq(state + k1 * tt[:, None] / 2, acc)
+            k3 = self.glonass_diff_eq(state + k2 * tt[:, None] / 2, acc)
+            k4 = self.glonass_diff_eq(state + k3 * tt[:, None], acc)
             state += (k1 + 2 * k2 + 2 * k3 + k4) * tt[:, None] / 6.0
             tdiff -= tt
 
@@ -507,8 +507,9 @@ class SatelliteEphemerisToECEF:
                     # Calculate elevation angle
                     elevation = np.rad2deg(np.arctan(up / np.sqrt(east**2 + north**2)))
                     if drop_below_horizon:
-                        elevation = np.where((elevation <= 0) | (elevation >= 90), np.nan, elevation) # Set elevation angle to NaN if not in the range (0, 90)
-                        azimuth = np.where((elevation <= 0) | (elevation >= 90), np.nan, azimuth) # Set elevation angle to NaN if not in the range (0, 90)
+                        bad_mask = (elevation <= 0) | (elevation >= 90)
+                        elevation = np.where(bad_mask, np.nan, elevation) # Set elevation angle to NaN if not in the range (0, 90)
+                        azimuth = np.where(bad_mask, np.nan, azimuth) # Set azimuth to NaN if elevation not in the range (0, 90)
                     # Store azimuth and elevation in the numpy arrays
                     az_array[:,PRN] = azimuth
                     el_array[:,PRN] = elevation

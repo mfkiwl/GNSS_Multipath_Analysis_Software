@@ -89,9 +89,9 @@ def test_GLONASS_without_initial_coordinates():
     computed_pos = np.array([X, Y, Z])
     computed_clock_error = np.array([dT])
 
-    # Expected coordinates for the receiver
-    expected_coords = np.array([3149782.9046, 598279.0639, 5495355.8332])
-    expected_clock_error = np.array([5.083982295608008e-08])
+    # Expected coordinates for the receiver (updated after GLONASS RK4 sign fix)
+    expected_coords = np.array([3149786.6660, 598277.5607, 5495357.3184])
+    expected_clock_error = np.array([5.647421260687668820e-08])
 
     # Use assert_almost_equal to compare the computed and expected positions
     assert_almost_equal(computed_pos, expected_coords, decimal=3)
@@ -111,9 +111,9 @@ def test_GLONASS_with_initial_coordinates():
     computed_pos = np.array([X, Y, Z])
     computed_clock_error = np.array([dT])
 
-    # Expected coordinates for the receiver
-    expected_coords = np.array([3149782.9046, 598279.0639, 5495355.8332])
-    expected_clock_error = np.array([5.083982295608008e-08])
+    # Expected coordinates for the receiver (updated after GLONASS RK4 sign fix)
+    expected_coords = np.array([3149786.6660, 598277.5607, 5495357.3184])
+    expected_clock_error = np.array([5.647421260157297155e-08])
 
     # Use assert_almost_equal to compare the computed and expected positions
     assert_almost_equal(computed_pos, expected_coords, decimal=3)

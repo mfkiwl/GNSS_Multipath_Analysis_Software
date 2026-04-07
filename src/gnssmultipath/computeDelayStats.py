@@ -389,7 +389,7 @@ def computeDelayStats(ion_delay_phase1, multipath_range1, current_sat_elevation_
 
         else:
 
-            ## Set to zero
+            ## Set per-satellite counts to zero (no combined slips for this satellite)
             combined_slip_distribution_per_sat[i]['n_slips_0_10']    = 0
             combined_slip_distribution_per_sat[i]['n_slips_10_20']   = 0
             combined_slip_distribution_per_sat[i]['n_slips_20_30']   = 0
@@ -398,15 +398,6 @@ def computeDelayStats(ion_delay_phase1, multipath_range1, current_sat_elevation_
             combined_slip_distribution_per_sat[i]['n_slips_over50']  = 0
             combined_slip_distribution_per_sat[i]['n_slips_NaN']     = 0
             combined_slip_distribution_per_sat[i]['n_slips_Tot']     = 0
-
-            combined_slip_distribution['n_slips_0_10']   = 0
-            combined_slip_distribution['n_slips_10_20']  = 0
-            combined_slip_distribution['n_slips_20_30']  = 0
-            combined_slip_distribution['n_slips_30_40']  = 0
-            combined_slip_distribution['n_slips_40_50']  = 0
-            combined_slip_distribution['n_slips_over50'] = 0
-            combined_slip_distribution['n_slips_NaN']    = 0
-            combined_slip_distribution['n_slips_Tot']    = 0
 
 
     ## --Amount of range1 observations

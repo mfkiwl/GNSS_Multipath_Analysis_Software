@@ -149,8 +149,8 @@ def signalAnalysis(currentGNSSsystem, range1_Code, range2_Code, GNSSsystems, fre
             n_slip_periods,_ = current_sat_slip_periods.shape
             n_slips_removed = 0
             for slip_period in np.arange(0,n_slip_periods):
-                if cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 0], sat] == 0 \
-                    or cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 1], sat] == 0:
+                if cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 0], sat+1] == 0 \
+                    or cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 1], sat+1] == 0:
 
                     current_sat_slip_periods = np.delete(current_sat_slip_periods, slip_period - n_slips_removed, axis=0)
                     n_slips_removed = n_slips_removed + 1
@@ -164,8 +164,8 @@ def signalAnalysis(currentGNSSsystem, range1_Code, range2_Code, GNSSsystems, fre
             n_slip_periods,_ = current_sat_slip_periods.shape
             n_slips_removed = 0
             for slip_period in np.arange(0,n_slip_periods):
-                if cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 0], sat] == 0 \
-                    or cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 1], sat] == 0:
+                if cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 0], sat+1] == 0 \
+                    or cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 1], sat+1] == 0:
 
                     current_sat_slip_periods = np.delete(current_sat_slip_periods, slip_period - n_slips_removed, axis=0)
                     n_slips_removed = n_slips_removed + 1
