@@ -324,13 +324,6 @@ class TestGetLLISlipPeriods:
             assert result[0, 0] == 3
             assert result[0, 1] == 5
 
-    @pytest.mark.xfail(
-        reason="BUG in getLLISlipPeriods: np.diff operates on wrong axis "
-               "because LLI_slips is reshaped to column vector (N,1). "
-               "np.diff defaults to last axis, producing empty result for axis=1. "
-               "Fix: add axis=0 to np.diff call on line ~43.",
-        strict=True,
-    )
     def test_non_consecutive_lli_flags(self):
         """Non-consecutive LLI flags should form separate periods."""
         nepochs = 20
