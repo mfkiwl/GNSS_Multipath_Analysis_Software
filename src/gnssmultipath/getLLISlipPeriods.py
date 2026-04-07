@@ -36,8 +36,8 @@ def getLLISlipPeriods(LLI_current_phase):
             ## slip epoch is NOT the epoch following the current slip epoch.
             ## These will therefor be the indices where slip periods end.
             ## The last slip end is not detected this way and is inserted manually
-            dummy = np.diff(LLI_slips) !=1 * 1
-            slip_period_ends = np.concatenate((LLI_slips[dummy], LLI_slips[-1]))
+            dummy = np.diff(LLI_slips, axis=0).ravel() != 1
+            slip_period_ends = np.concatenate((LLI_slips.ravel()[:-1][dummy], LLI_slips.ravel()[-1:]))
             n_slip_periods = np.sum(dummy) + 1
             current_slip_periods = np.zeros([n_slip_periods,2])
             # store slip ends
@@ -47,8 +47,8 @@ def getLLISlipPeriods(LLI_current_phase):
             current_slip_periods[0,0] = LLI_slips[0].item() if hasattr(LLI_slips[0], "item") else LLI_slips[0]
             # Insert remaining slip period starts
             for k in range(1,n_slip_periods):
-                indx = next(x for x, val in enumerate(LLI_slips) if abs(val) ==  current_slip_periods[k-1, 1])
-                current_slip_periods[k, 0] = LLI_slips[indx + 1]
+                indx = next(x for x, val in enumerate(LLI_slips.ravel()) if abs(val) ==  current_slip_periods[k-1, 1])
+                current_slip_periods[k, 0] = LLI_slips.ravel()[indx + 1]
         else:
             current_slip_periods = []
 
