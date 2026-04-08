@@ -120,7 +120,7 @@ def readSP3Nav(filename, desiredGNSSsystems=None):
             # Keep reading lines until all satellite IDs have been read
             for k in range(0,nSat):
                 # Control that current satellite is among desired systems
-                if np.in1d(line[0], desiredGNSSsystems):
+                if line[0] in desiredGNSSsystems:
                     ## -- Get GNSSsystemIndex from map container
                     GNSSsystemIndex = GNSSsystem_map[line[0]]
                     #Get PRN number/slot number
@@ -179,7 +179,7 @@ def readSP3Nav(filename, desiredGNSSsystems=None):
         for i in range(0,nSat):
             line = fid.readline().rstrip()
             #if current satellite is among desired systems, store positions
-            if np.in1d(i, RemovedSatIndex,invert = True):
+            if i not in RemovedSatIndex:
                 #Get PRN and GNSSsystemIndex of current satellite for previously stored order
                 PRN = PRNOrder[i]
                 GNSSsystemIndex = GNSSsystemIndexOrder[i]

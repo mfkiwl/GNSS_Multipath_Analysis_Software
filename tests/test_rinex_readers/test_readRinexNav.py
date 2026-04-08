@@ -47,6 +47,12 @@ class TestRinexNavHeaderDetection:
         assert version == 3
         assert len(header) > 0
 
+    def test_v4_mixed_header(self, nav_v4_mixed_file):
+        reader = RinexNav()
+        version, header = reader.read_header_lines(nav_v4_mixed_file)
+        assert version == 4
+        assert len(header) > 0
+
     def test_v2_gps_header(self, nav_v2_gps_file):
         reader = RinexNav()
         version, header = reader.read_header_lines(nav_v2_gps_file)
@@ -237,6 +243,313 @@ class TestRinexV3NavFiltering:
         prns = [str(p) for p in eph[:, 0]]
         for prn in prns:
             assert prn.startswith("E"), f"Expected Galileo only, got {prn}"
+
+
+class TestRinexV4NavHeaderDetection:
+    """Test that the RINEX v4 header is correctly identified."""
+
+    def test_v4_version_detected(self, nav_v4_mixed_file):
+        reader = RinexNav()
+        version, header = reader.read_header_lines(nav_v4_mixed_file)
+        assert version == 4
+
+    def test_v4_header_contains_end_of_header(self, nav_v4_mixed_file):
+        reader = RinexNav()
+        _, header = reader.read_header_lines(nav_v4_mixed_file)
+        assert any("END OF HEADER" in line for line in header)
+
+    def test_v4_header_contains_leap_seconds(self, nav_v4_mixed_file):
+        reader = RinexNav()
+        _, header = reader.read_header_lines(nav_v4_mixed_file)
+        assert any("LEAP SECONDS" in line for line in header)
+
+
+class TestRinexV4NavMessageFiltering:
+    """Test the low-level _filter_rinex4_nav_messages method directly.
+
+    Uses BRD400DLR_S_20230710000_01D_MN_rin_v4.rnx which contains:
+        EPH records: LNAV(428 GPS), CNAV(334 GPS), FDMA(1240 GLO),
+                     INAV(2943 GAL), FNAV(2897 GAL), D1(893 BDS),
+                     D2(168 BDS), CNV1(634 BDS), CNV2(1024 BDS),
+                     SBAS(9072), QZSS LNAV, IRNSS
+        Non-EPH records: STO(126), ION(130), EOP(32)
+    Supported families: GPS LNAV, GLONASS FDMA, Galileo INAV/FNAV/IFNV, BeiDou D1/D2/D1D2.
+    """
+
+    @pytest.fixture(scope="class")
+    def v4_lines(self, nav_v4_mixed_file):
+        with open(nav_v4_mixed_file) as f:
+            return f.readlines()
+
+    def test_gps_lnav_block_count(self, v4_lines):
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["G"])
+        assert len(blocks) == 428
+
+    def test_glonass_fdma_block_count(self, v4_lines):
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["R"])
+        assert len(blocks) == 1240
+
+    def test_galileo_inav_fnav_block_count(self, v4_lines):
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["E"])
+        assert len(blocks) == 2943 + 2897  # INAV + FNAV
+
+    def test_beidou_d1_d2_block_count(self, v4_lines):
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["C"])
+        assert len(blocks) == 893 + 168  # D1 + D2
+
+    def test_all_systems_block_count(self, v4_lines):
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["G", "R", "E", "C"])
+        expected = 428 + 1240 + 2943 + 2897 + 893 + 168
+        assert len(blocks) == expected
+
+    def test_gps_cnav_is_skipped(self, v4_lines):
+        """GPS CNAV messages must not appear — they have different field layout."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["G"])
+        for block in blocks:
+            assert block[0].strip().startswith("G"), "Non-GPS block leaked through"
+        # 428 LNAV only, 334 CNAV skipped
+        assert len(blocks) == 428
+
+    def test_beidou_cnv1_cnv2_are_skipped(self, v4_lines):
+        """BeiDou CNV1/CNV2 messages must not appear — they have different field layout."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["C"])
+        # 893 D1 + 168 D2 only, 634 CNV1 + 1024 CNV2 skipped
+        assert len(blocks) == 893 + 168
+
+    def test_sbas_qzss_irnss_are_skipped(self, v4_lines):
+        """SBAS, QZSS, and IRNSS are not in supported systems."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["G", "R", "E", "C"])
+        for block in blocks:
+            sys_char = block[0].strip()[0]
+            assert sys_char in {"G", "R", "E", "C"}, f"Unexpected system: {sys_char}"
+
+    def test_non_eph_records_are_skipped(self, v4_lines):
+        """STO, ION, EOP records must not appear in output."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["G", "R", "E", "C"])
+        for block in blocks:
+            for line in block:
+                assert not line.startswith("> STO")
+                assert not line.startswith("> ION")
+                assert not line.startswith("> EOP")
+
+    def test_gps_block_body_length_is_8(self, v4_lines):
+        """Each GPS LNAV block should have exactly 8 lines (epoch + 7 data)."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["G"])
+        for i, block in enumerate(blocks):
+            assert len(block) == 8, f"GPS block {i} has {len(block)} lines, expected 8"
+
+    def test_glonass_block_body_length_is_5(self, v4_lines):
+        """Each GLONASS FDMA block should have exactly 5 lines (epoch + 4 data)."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["R"])
+        for i, block in enumerate(blocks):
+            assert len(block) == 5, f"GLONASS block {i} has {len(block)} lines, expected 5"
+
+    def test_galileo_block_body_length_is_8(self, v4_lines):
+        """Each Galileo INAV/FNAV block should have exactly 8 lines."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["E"])
+        for i, block in enumerate(blocks):
+            assert len(block) == 8, f"Galileo block {i} has {len(block)} lines, expected 8"
+
+    def test_beidou_block_body_length_is_8(self, v4_lines):
+        """Each BeiDou D1/D2 block should have exactly 8 lines."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["C"])
+        for i, block in enumerate(blocks):
+            assert len(block) == 8, f"BeiDou block {i} has {len(block)} lines, expected 8"
+
+    def test_empty_for_unsupported_system_only(self, v4_lines):
+        """Requesting only SBAS ('S') should yield no blocks."""
+        reader = RinexNav()
+        blocks = reader._filter_rinex4_nav_messages(v4_lines, ["S"])
+        assert len(blocks) == 0
+
+
+class TestRinexV4NavFullRead:
+    """Test the full read_rinex_nav pipeline on the RINEX v4 file."""
+
+    @pytest.fixture(autouse=True, scope="class")
+    def _read_all(self, nav_v4_mixed_file):
+        cls = type(self)
+        reader = Rinex_v3_Reader()
+        cls.result_all = reader.read_rinex_nav(
+            nav_v4_mixed_file, desired_GNSS=["G", "R", "E", "C"], data_rate=30
+        )
+
+    def test_result_keys(self):
+        assert "ephemerides" in self.result_all
+        assert "header" in self.result_all
+        assert "nepohs" in self.result_all
+        assert "glonass_fcn" in self.result_all
+
+    def test_ephemerides_shape_36_columns(self):
+        assert self.result_all["ephemerides"].shape[1] == 36
+
+    def test_all_four_systems_present(self):
+        eph = self.result_all["ephemerides"]
+        systems = {str(prn)[0] for prn in eph[:, 0]}
+        assert systems == {"G", "R", "E", "C"}
+
+    def test_total_ephemerides_count(self):
+        """After data_rate=30 filtering, total count should be 3737."""
+        assert len(self.result_all["ephemerides"]) == 3737
+
+    def test_nepochs_matches_ephemerides_length(self):
+        assert self.result_all["nepohs"] == len(self.result_all["ephemerides"])
+
+
+class TestRinexV4NavPerSystemRead:
+    """Test per-system reads on a RINEX v4 file match expected counts and content."""
+
+    def test_gps_only_count_and_purity(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["G"], data_rate=30)
+        eph = result["ephemerides"]
+        assert len(eph) == 393
+        assert eph.shape[1] == 36
+        assert all(str(p).startswith("G") for p in eph[:, 0])
+
+    def test_gps_unique_prns(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["G"], data_rate=30)
+        unique_prns = set(str(p) for p in result["ephemerides"][:, 0])
+        assert len(unique_prns) == 32
+
+    def test_glonass_only_count_and_purity(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["R"], data_rate=30)
+        eph = result["ephemerides"]
+        assert len(eph) == 1240
+        assert eph.shape[1] == 36
+        assert all(str(p).startswith("R") for p in eph[:, 0])
+
+    def test_glonass_fcn_populated(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["R"], data_rate=30)
+        fcn = result["glonass_fcn"]
+        assert fcn is not None
+        assert len(fcn) == 26
+        # Spot-check known FCN values from the file
+        assert fcn[1] == 1    # R01 → FCN +1
+        assert fcn[2] == -4   # R02 → FCN -4
+        assert fcn[3] == 5    # R03 → FCN +5
+
+    def test_galileo_only_count_and_purity(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["E"], data_rate=30)
+        eph = result["ephemerides"]
+        assert len(eph) == 1049
+        assert eph.shape[1] == 36
+        assert all(str(p).startswith("E") for p in eph[:, 0])
+
+    def test_galileo_unique_prns(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["E"], data_rate=30)
+        unique_prns = set(str(p) for p in result["ephemerides"][:, 0])
+        assert len(unique_prns) == 26
+
+    def test_beidou_only_count_and_purity(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["C"], data_rate=30)
+        eph = result["ephemerides"]
+        assert len(eph) == 1055
+        assert eph.shape[1] == 36
+        assert all(str(p).startswith("C") for p in eph[:, 0])
+
+    def test_beidou_unique_prns(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["C"], data_rate=30)
+        unique_prns = set(str(p) for p in result["ephemerides"][:, 0])
+        assert len(unique_prns) == 44
+
+
+class TestRinexV4NavEphemerisValues:
+    """Verify parsed ephemeris values against known values from the raw file."""
+
+    @pytest.fixture(autouse=True, scope="class")
+    def _read_all(self, nav_v4_mixed_file):
+        cls = type(self)
+        reader = Rinex_v3_Reader()
+        cls.result = reader.read_rinex_nav(
+            nav_v4_mixed_file, desired_GNSS=["G", "R", "E", "C"], data_rate=30
+        )
+
+    def _first_entry_for(self, sys_char):
+        eph = self.result["ephemerides"]
+        for row in eph:
+            if str(row[0]).startswith(sys_char):
+                return row
+        pytest.fail(f"No {sys_char} entry found")
+
+    def test_gps_g01_first_epoch(self):
+        """First G01 LNAV block: 2023 03 12 00 00 00, af0=2.037500962615e-04."""
+        row = self._first_entry_for("G")
+        assert str(row[0]) == "G01"
+        # Epoch fields
+        assert float(row[1]) == 2023
+        assert float(row[2]) == 3
+        assert float(row[3]) == 12
+        assert float(row[4]) == 0
+        assert float(row[5]) == 0
+        assert float(row[6]) == 0
+        # Clock bias
+        assert abs(float(row[7]) - 2.037500962615e-04) < 1e-16
+
+    def test_glonass_r01_first_epoch(self):
+        """First R01 FDMA block: 2023 03 12 00 15 00, af0=2.458319067955e-05."""
+        row = self._first_entry_for("R")
+        assert str(row[0]) == "R01"
+        assert float(row[1]) == 2023
+        assert float(row[2]) == 3
+        assert float(row[3]) == 12
+        # Clock bias
+        assert abs(float(row[7]) - 2.458319067955e-05) < 1e-17
+
+    def test_galileo_e01_first_epoch(self):
+        """First E01 INAV/FNAV block: 2023 03 12 00 00 00, af0=-1.709302887321e-05."""
+        row = self._first_entry_for("E")
+        assert str(row[0]) == "E01"
+        assert float(row[1]) == 2023
+        assert abs(float(row[7]) - (-1.709302887321e-05)) < 1e-17
+
+    def test_beidou_c01_first_epoch(self):
+        """First C01 D1/D2 block: 2023 03 12 00 00 00, af0=9.050882654265e-04."""
+        row = self._first_entry_for("C")
+        assert str(row[0]) == "C01"
+        assert float(row[1]) == 2023
+        assert abs(float(row[7]) - 9.050882654265e-04) < 1e-16
+
+    def test_gps_g01_sqrtA(self):
+        """G01 LNAV sqrtA should be 5.153656053543e+03 (column index 17)."""
+        row = self._first_entry_for("G")
+        assert abs(float(row[17]) - 5.153656053543e+03) < 1e-6
+
+
+class TestRinexV4NavDataRateFiltering:
+    """Test that data_rate filtering works correctly on v4 parsed data."""
+
+    def test_higher_data_rate_gives_fewer_ephemerides(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result_30 = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["G"], data_rate=30)
+        result_120 = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["G"], data_rate=120)
+        assert len(result_120["ephemerides"]) < len(result_30["ephemerides"])
+
+    def test_data_rate_0_returns_all_blocks(self, nav_v4_mixed_file):
+        reader = Rinex_v3_Reader()
+        result = reader.read_rinex_nav(nav_v4_mixed_file, desired_GNSS=["G"], data_rate=0)
+        # data_rate=0 should not filter out any blocks — expect at least the 428 raw LNAV blocks
+        assert len(result["ephemerides"]) >= 428
 
 
 class TestRinexV2GPSNav:

@@ -393,7 +393,7 @@ class SatelliteEphemerisToECEF:
             version, header = RinexNav().read_header_lines(nav_file)
             if version == 2:
                 nav_data = Rinex_v2_Reader().read_rinex_nav(nav_file)
-            elif version == 3:
+            elif version >= 3:
                 nav_data = Rinex_v3_Reader().read_rinex_nav(nav_file, data_rate=data_rate)
             nav_datas.append(nav_data['ephemerides'])
         data = np.concatenate(nav_datas, axis=0)

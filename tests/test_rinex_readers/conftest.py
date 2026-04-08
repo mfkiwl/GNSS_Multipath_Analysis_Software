@@ -61,6 +61,11 @@ def nav_mixed_file():
 
 
 @pytest.fixture(scope="module")
+def nav_v4_mixed_file():
+    return os.path.join(NAV_DIR, "BRD400DLR_S_20230710000_01D_MN_rin_v4.rnx")
+
+
+@pytest.fixture(scope="module")
 def nav_v2_gps_file():
     return os.path.join(NAV_DIR, "auto3430_v211.24n")
 

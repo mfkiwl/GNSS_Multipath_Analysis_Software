@@ -26,20 +26,91 @@ class RinexNav:
     def __init__(self):
         self.dataframe = None
         self.block_len = {'G' : 7, 'R': 3, 'E' : 7, 'C': 7}
+        self.rinex4_body_len = {'G': 8, 'R': 5, 'E': 8, 'C': 8}
+        self.supported_rinex4_nav_messages = {
+            'G': {'LNAV'},
+            'R': {'FDMA'},
+            'E': {'INAV', 'FNAV', 'IFNV'},
+            'C': {'D1', 'D2', 'D1D2'},
+        }
         self.glo_fcn = None
 
 
-    def filter_data_rinex_nav(self, filename, desired_GNSS, data_rate=30):
+    def filter_data_rinex_nav(self, filename, desired_GNSS, data_rate=30, version=None):
         """
         This function is creating a list of lists that contain ephemeride data
         for the desired GNSS systems only. The rate of data can be set by the user.
         Default value is 30 min.
         """
-        pattern = r'^[' + ''.join(desired_GNSS) + ']\d{2}'
         with open(filename, "r") as f:
             lines = f.readlines()
-        desired_lines = [lines[idx:idx + self.block_len[line[0]] + 1] for idx, line in enumerate(lines) if re.match(pattern, line) is not None]
+
+        if version is None:
+            version = self._parse_rinex_version(lines[0])
+
+        if version >= 4:
+            desired_lines = self._filter_rinex4_nav_messages(lines, desired_GNSS)
+        else:
+            pattern = r'^[' + ''.join(desired_GNSS) + ']\d{2}'
+            desired_lines = [
+                lines[idx:idx + self.block_len[line[0]] + 1]
+                for idx, line in enumerate(lines)
+                if re.match(pattern, line) is not None
+            ]
+
+        if not desired_lines:
+            return []
+
         desired_lines = self.filter_ephemeris_data_on_time(desired_lines, time_difference_minutes=data_rate)  # remove epochs with time difference less than specified time
+        return desired_lines
+
+
+    def _parse_rinex_version(self, first_line):
+        version_string = first_line[0:9].strip()
+        try:
+            return int(float(version_string))
+        except ValueError as exc:
+            raise ValueError(f"Unable to parse RINEX version from header line: {first_line.rstrip()}") from exc
+
+
+    def _filter_rinex4_nav_messages(self, lines, desired_GNSS):
+        header_end_idx = next((idx for idx, line in enumerate(lines) if 'END OF HEADER' in line), None)
+        if header_end_idx is None:
+            raise ValueError('RINEX navigation file header is missing END OF HEADER.')
+
+        desired_lines = []
+        idx = header_end_idx + 1
+        while idx < len(lines):
+            line = lines[idx]
+            if not line.startswith('> EPH'):
+                idx += 1
+                continue
+
+            tokens = line.split()
+            if len(tokens) < 4:
+                idx += 1
+                continue
+
+            sat_id = tokens[2]
+            system = sat_id[0]
+            nav_message_type = tokens[3].upper()
+
+            next_header_idx = idx + 1
+            while next_header_idx < len(lines) and not lines[next_header_idx].startswith('>'):
+                next_header_idx += 1
+
+            message_lines = lines[idx + 1:next_header_idx]
+            expected_body_len = self.rinex4_body_len.get(system, self.block_len.get(system, 0) + 1)
+            if system in desired_GNSS and nav_message_type in self.supported_rinex4_nav_messages.get(system, set()):
+                if len(message_lines) != expected_body_len:
+                    raise ValueError(
+                        f"Unexpected number of data lines for {sat_id} ({nav_message_type}): "
+                        f"expected {expected_body_len}, got {len(message_lines)}."
+                    )
+                desired_lines.append(message_lines)
+
+            idx = next_header_idx
+
         return desired_lines
 
 
@@ -48,6 +119,9 @@ class RinexNav:
         Filter rinex nav data based on time. The desired data rate can be set
         by time_difference_minutes. Default value is 30 min.
         """
+        if not ephemeris_list:
+            return []
+
         filtered_data = []
         time_difference = timedelta(minutes=time_difference_minutes)
         previous_epoch_str = ephemeris_list[0][0].split()[1:6]
@@ -113,10 +187,7 @@ class RinexNav:
                 lines = file.readlines()
                 #Get the navigation file version
                 firstline = lines[0]
-                if '2' in firstline:
-                    version = 2
-                elif '3' in firstline:
-                    version = 3
+                version = self._parse_rinex_version(firstline)
                 for line in lines:
                     line = line.rstrip()
                     header.append(line)
@@ -296,7 +367,16 @@ class Rinex_v3_Reader(RinexNav):
                 raise ValueError("Invalid GNSS system in desired_GNSS list. Must be one these ['G','R','E','C'].")
 
         version, header = self.read_header_lines(filename)
-        nav_lines = self.filter_data_rinex_nav(filename, desired_GNSS, data_rate=data_rate)
+        nav_lines = self.filter_data_rinex_nav(filename, desired_GNSS, data_rate=data_rate, version=version)
+        if not nav_lines:
+            data = np.empty((0, 36), dtype=object)
+            nav_data = {'ephemerides':data,
+                        'header':header,
+                        'nepohs': 0,
+                        'glonass_fcn': None}
+            if dataframe:
+                nav_data['ephemerides'] = DataFrame(data)
+            return nav_data
         current_epoch = 0
         n_update_break = max(1, len(nav_lines) // 10)
         n_ep = 100 if len(nav_lines)>10 else len(nav_lines)
