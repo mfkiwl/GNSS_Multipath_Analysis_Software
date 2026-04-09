@@ -10,7 +10,7 @@ from typing import Literal, Optional, List, Union, Tuple
 import numpy as np
 from numpy import ndarray
 from tqdm import tqdm
-from gnssmultipath.Geodetic_functions import date2gpstime_vectorized, get_leap_seconds, gpstime2date_arrays, ECEF2enu, ECEF2geodb
+from gnssmultipath.Geodetic_functions import date2gpstime_vectorized, get_leap_seconds, gpstime2date_arrays, ECEF2enu, ECEF2enu_batch, ECEF2geodb
 from gnssmultipath.RinexNav import Rinex_v3_Reader,Rinex_v2_Reader,RinexNav
 
 
@@ -497,7 +497,7 @@ class SatelliteEphemerisToECEF:
                     dZ = (Z - self.z_rec)
 
                     # Convert from ECEF to ENU (east,north, up)
-                    east, north, up = np.vectorize(ECEF2enu)(lat,lon,dX,dY,dZ)
+                    east, north, up = ECEF2enu_batch(lat,lon,dX,dY,dZ)
 
                     # Calculate azimuth angle and correct for quadrants
                     azimuth = np.rad2deg(np.arctan(east/north))

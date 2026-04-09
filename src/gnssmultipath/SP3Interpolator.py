@@ -283,22 +283,33 @@ class SP3Interpolator:
 
         # If output_format is 'dataframe', convert the dictionary to a DataFrame
         if output_format == "pd.DataFrame":
-            rows = []
+            all_epochs = []
+            all_sats = []
+            all_x = []
+            all_y = []
+            all_z = []
+            all_clk = []
+            epoch_datetimes = [datetime(*t) for t in observation_times]
             for gnss, satellites in interpolated_positions.items():
                 for satellite, data in satellites.items():
                     positions = data["positions"]
                     clock_biases = data["clock_bias"]
-                    for idx, (time, position, clock_bias) in enumerate(zip(observation_times, positions, clock_biases)):
-                        rows.append({
-                            "Epoch": datetime(*time),  # Convert to datetime object
-                            "Satellite": satellite,
-                            "X": position[0],
-                            "Y": position[1],
-                            "Z": position[2],
-                            "Clock Bias": clock_bias
-                        })
+                    n = len(epoch_datetimes)
+                    all_epochs.append(epoch_datetimes)
+                    all_sats.append([satellite] * n)
+                    all_x.append(positions[:, 0])
+                    all_y.append(positions[:, 1])
+                    all_z.append(positions[:, 2])
+                    all_clk.append(clock_biases)
 
-            return pd.DataFrame(rows)
+            return pd.DataFrame({
+                "Epoch": np.concatenate(all_epochs) if all_epochs else [],
+                "Satellite": np.concatenate(all_sats) if all_sats else [],
+                "X": np.concatenate(all_x) if all_x else [],
+                "Y": np.concatenate(all_y) if all_y else [],
+                "Z": np.concatenate(all_z) if all_z else [],
+                "Clock Bias": np.concatenate(all_clk) if all_clk else [],
+            })
 
         return interpolated_positions
 

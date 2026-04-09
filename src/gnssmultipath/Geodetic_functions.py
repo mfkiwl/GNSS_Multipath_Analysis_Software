@@ -69,6 +69,38 @@ def ECEF2enu(lat,lon,dX,dY,dZ): ## added this new function 28.01.2023
     return e, n, u
 
 
+def ECEF2enu_batch(lat, lon, dX, dY, dZ):
+    """
+    Vectorized ECEF-to-ENU conversion for a fixed receiver position.
+
+    Parameters
+    ----------
+    lat : float  – Receiver geodetic latitude (radians)
+    lon : float  – Receiver geodetic longitude (radians)
+    dX, dY, dZ : numpy arrays – Coordinate differences (satellite − receiver)
+
+    Returns
+    -------
+    east, north, up : numpy arrays of same shape as dX
+    """
+    if -2*pi < lon < -pi:
+        lon = lon + 2*pi
+    elif pi < lon < 2*pi:
+        lon = lon - 2*pi
+
+    sin_lon = np.sin(lon)
+    cos_lon = np.cos(lon)
+    sin_lat = np.sin(lat)
+    cos_lat = np.cos(lat)
+
+    M = np.array([[-sin_lon,           cos_lon,            0],
+                  [-sin_lat*cos_lon,   -sin_lat*sin_lon,   cos_lat],
+                  [ cos_lat*cos_lon,    cos_lat*sin_lon,   sin_lat]])
+
+    dP = np.array([dX, dY, dZ])   # (3, n)
+    enu = M @ dP                   # (3, n)
+
+    return enu[0], enu[1], enu[2]
 
 
 
@@ -136,7 +168,7 @@ def compute_satellite_azimut_and_elevation_angle(X, Y, Z, xm, ym, zm):
     dZ = (Z - zm)
 
     # Convert from ECEF to ENU (east,north, up)
-    east, north, up = np.vectorize(ECEF2enu)(lat,lon,dX,dY,dZ)
+    east, north, up = ECEF2enu_batch(lat,lon,dX,dY,dZ)
 
     # Calculate azimuth angle and correct for quadrants
     azimuth = np.rad2deg(np.arctan(east/north))
