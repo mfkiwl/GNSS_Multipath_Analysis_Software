@@ -168,15 +168,21 @@ def estimateSignalDelays(range1_Code, range2_Code,phase1_Code, phase2_Code, carr
     if FDMA_used: # denne er inødnendig etter vektoriseringen
         carrier_freq1 = carrier_freq1_list
         carrier_freq2 = carrier_freq2_list
-        alpha = carrier_freq1**2/carrier_freq2**2 # amplfication factor
+        safe_freq1 = np.where(carrier_freq1 != 0, carrier_freq1, 1.0)
+        safe_freq2 = np.where(carrier_freq2 != 0, carrier_freq2, 1.0)
+        alpha = np.where(carrier_freq2 != 0, carrier_freq1**2 / safe_freq2**2, 0.0) # amplfication factor
 
 
     #  Get observations
     range1 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],range1_Code))
     range2 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],range2_Code))
 
-    phase1 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase1_Code))*c/carrier_freq1
-    phase2 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase2_Code))*c/carrier_freq2
+    if FDMA_used:
+        phase1 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase1_Code))*c/safe_freq1
+        phase2 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase2_Code))*c/safe_freq2
+    else:
+        phase1 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase1_Code))*c/carrier_freq1
+        phase2 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase2_Code))*c/carrier_freq2
 
     if all(v is None for v in [range1, range2, phase1, phase2]):
         print('ERROR(estimateSignalDelays): Some observations are missing. Check for missing data in RINEX observation file!')
