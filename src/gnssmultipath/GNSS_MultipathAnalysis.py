@@ -22,6 +22,7 @@ from gnssmultipath.createCSVfile import createCSVfile
 from gnssmultipath.make_polarplot import make_polarplot, make_skyplot, make_polarplot_SNR, plot_SNR_wrt_elev
 from gnssmultipath.make_polarplot_dont_use_TEX import make_polarplot_dont_use_TEX, make_skyplot_dont_use_TEX, make_polarplot_SNR_dont_use_TEX, plot_SNR_wrt_elev_dont_use_TEX
 from gnssmultipath.plotResults import plotResults, plotResults_dont_use_TEX, make_barplot, make_barplot_dont_use_TEX
+from gnssmultipath.SkyPlotSummary import make_skyplot_summary
 from gnssmultipath.PickleHandler import PickleHandler
 from gnssmultipath.PreciseSatCoords import PreciseSatCoords
 from gnssmultipath.SP3PositionEstimator import SP3PositionEstimator
@@ -728,6 +729,17 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
                 if code.startswith('S'):
                     curr_signal = np.stack(list(GNSS_obs[GNSSsystems[syst_key]].values()))[:, :, n]
                     analysisResults[syst_name]['SNR'][code] = np.squeeze(curr_signal)
+
+    # ── Summary heatmaps (issue #55) ───────────────────────────────────────
+    if plotEstimates:
+        print('INFO: Making azimuth vs elevation summary heatmaps. Please wait...')
+        try:
+            make_skyplot_summary(analysisResults, graphDir, use_latex=use_LaTex)
+        except Exception:
+            try:
+                make_skyplot_summary(analysisResults, graphDir, use_latex=False)
+            except Exception as e:
+                logger.warning("INFO(GNSS_MultipathAnalysis): Summary heatmaps could not be generated: %s", e)
 
     # ── Save results ──────────────────────────────────────────────────────────
     if write_results_to_csv:
