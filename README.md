@@ -32,6 +32,8 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
    - [Read in the results from a compressed Pickle file](#read-in-the-results-from-a-compressed-pickle-file)
    - [Estimate the receiver position based on pseudoranges using SP3 file and print the standard deviation of the estimated position](#estimate-the-receiver-position-based-on-pseudoranges-using-sp3-file-and-print-the-standard-deviation-of-the-estimated-position)
    - [Estimate the receiver position based on pseudoranges using RINEX navigation file and print the DOP values](#estimate-the-receiver-position-based-on-pseudoranges-using-rinex-navigation-file-and-print-the-dop-values)
+   - [Estimate the receiver's position based on pseudoranges in the desired CRS](#estimate-the-receivers-position-based-on-pseudoranges-in-the-desired-crs)
+   - [Download GNSS data from CDDIS](#download-gnss-data-from-cddis)
 
 
 
@@ -63,6 +65,7 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
 - Detects cycle slips and estimates the multipath effect.
 - Exports results to CSV and a Python dictionary as a Pickle (both compressed and uncompressed formats are supported).
 - Allows selection of specific navigation systems and signal bands for analysis.
+- Includes a built-in CDDIS downloader for fetching GNSS data (navigation, observation, and SP3 files) directly from NASA's CDDIS archive via FTPS.
 - Estimate the approximate position of the receiver using pseudoranges from the RINEX observation file.
   - Supports both SP3 and RINEX navigation files.
   - The software will estimate the receiver's position if it is not provided in the header of the RINEX observation file.
@@ -479,6 +482,41 @@ gnsspos, stats = GNSSPositionEstimator(rinObs,
 
 print('Estimated coordinates in ECEF (m):\n' + '\n'.join([f'{axis} = {coord}' for axis, coord in zip(['Easting', 'Northing', 'Height (ellipsoidal)'], np.round(gnsspos[:-1], 3))]))
 ```
+
+
+### Download GNSS data from CDDIS
+
+The built-in `CDDISDownloader` class lets you download GNSS data products directly from NASA's [CDDIS](https://cddis.nasa.gov/) archive via anonymous FTPS. It supports broadcast navigation files (RINEX v2, v3, v4), observation files, SP3 precise orbit files, and multi-GNSS merged navigation files. Downloaded `.gz` and `.Z` files are automatically decompressed.
+
+```python
+from gnssmultipath import CDDISDownloader
+
+# Connect using your email (anonymous FTPS login)
+with CDDISDownloader(username="your_email@example.com") as dl:
+    # Download a RINEX v3 multi-GNSS broadcast navigation file
+    nav_file = dl.download_broadcast_nav(year=2022, doy=1, rinex_version=3,
+                                         output_dir="./gnss_data/nav")
+
+    # Download a RINEX v4 navigation file (DLR)
+    nav_v4 = dl.download_broadcast_nav(year=2023, doy=71, rinex_version=4,
+                                       output_dir="./gnss_data/nav")
+
+    # Download a station observation file
+    obs_file = dl.download_observation(year=2022, doy=1, station="BRUX",
+                                       rinex_version=3,
+                                       output_dir="./gnss_data/obs")
+
+    # Download SP3 precise orbit file
+    sp3_file = dl.download_sp3(year=2022, doy=1, product="igs",
+                               output_dir="./gnss_data/sp3")
+
+    # Download everything for a given day in one call
+    bundle = dl.download_daily_data(year=2022, doy=1, station="BRUX",
+                                    nav_version=3, include_sp3=True,
+                                    output_dir="./gnss_data")
+```
+
+Note: CDDIS uses anonymous FTPS. No Earthdata account registration is needed. A more comprehensive example script is available in [`src/cddis_download_example.py`](src/cddis_download_example.py).
 
 
 ## Some background information on implementation
