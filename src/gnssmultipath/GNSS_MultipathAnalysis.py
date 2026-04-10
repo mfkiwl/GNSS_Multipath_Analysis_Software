@@ -491,11 +491,12 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
 
         for bandNumInd in range(nBands):
             current_band_dict = current_sys_dict[current_sys_dict['Bands'][bandNumInd]]
-            nCodes = current_band_dict['nCodes']
             currentBandName = current_sys_dict['Bands'][bandNumInd]
 
-            for i in range(nCodes):
+            for i in range(len(current_band_dict['Codes'])):
                 range1_Code = current_band_dict['Codes'][i]
+                if not isinstance(range1_Code, str):
+                    continue
                 phase1_Code = "L" + range1_Code[1:]
                 codeNum += 1
                 obs_codes_list = obsCodes[sys + 1][currentGNSSsystem]
@@ -525,29 +526,26 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
                         continue
 
                     other_band_dict = current_sys_dict[current_sys_dict['Bands'][secondBandnum]]
-                    nCodesOtherBand = other_band_dict['nCodes']
 
-                    for k in range(nCodesOtherBand):
+                    for k in range(len(other_band_dict['Codes'])):
                         range2_Code = other_band_dict['Codes'][k]
-                        if range2_Code == []:
+                        if not isinstance(range2_Code, str):
                             continue
                         phase2_Code = "L" + range2_Code[1:]
 
                         # Check if phase2 observation was read from RINEX observation file
                         if phase2_Code not in obs_codes_list:
-                            pbar.update(1)
                             logger.warning(
                                 f"INFO(GNSS_MultipathAnalysis): {range2_Code} code exists in RINEX observation file, "
                                 f"but not {phase2_Code}. Linear combinations using this signal are not used.")
-                            other_band_dict['Codes'][ismember(other_band_dict['Codes'], range2_Code)] = []
-                            other_band_dict["nCodes"] -= 1
-                            current_sys_dict[current_sys_dict['Bands'][secondBandnum]] = other_band_dict
                             continue
 
                         # Check that signals contain actual data
+                        range2_Code_idx = obs_codes_list.index(range2_Code)
                         phase2_Code_idx = obs_codes_list.index(phase2_Code)
                         if (np.all(obs_values[:, :, range1_Code_idx] == 0) or
                                 np.all(obs_values[:, :, phase1_Code_idx] == 0) or
+                                np.all(obs_values[:, :, range2_Code_idx] == 0) or
                                 np.all(obs_values[:, :, phase2_Code_idx] == 0)):
                             logger.warning(
                                 f"INFO(GNSS_MultipathAnalysis): One or more of the following observation codes "
