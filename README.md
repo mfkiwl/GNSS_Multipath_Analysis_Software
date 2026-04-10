@@ -27,7 +27,7 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
    - [Run analysis without making plots](#run-analysis-without-making-plots)
    - [Run analysis and use the Zstandard compression algorithm (ZSTD) to compress the pickle file storing the results](#run-analysis-and-use-the-zstandard-compression-algorithm-zstd-to-compress-the-pickle-file-storing-the-results)
    - [Read a RINEX observation file](#read-a-rinex-observation-file)
-   - [Read a RINEX navigation file (v.3)](#read-a-rinex-navigation-file-v3)
+   - [Read a RINEX navigation file (v3 or v4)](#read-a-rinex-navigation-file-v3-or-v4)
    - [Read in the results from an uncompressed Pickle file](#read-in-the-results-from-an-uncompressed-pickle-file)
    - [Read in the results from a compressed Pickle file](#read-in-the-results-from-a-compressed-pickle-file)
    - [Estimate the receiver position based on pseudoranges using SP3 file and print the standard deviation of the estimated position](#estimate-the-receiver-position-based-on-pseudoranges-using-sp3-file-and-print-the-standard-deviation-of-the-estimated-position)
@@ -48,7 +48,8 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
 - Estimates the code multipath for all available signals/codes in the RINEX file.
 - Provides statistics on the total number of cycle slips detected (using both ionospheric residuals and code-phase differences).
 - Supports both RINEX navigation files (broadcast ephemerides) and SP3 files (precise ephemerides).
-- Supports both RINEX v2.xx and v3.xx observation files.
+- Supports RINEX v2.xx, v3.xx, and v4.xx observation files
+- Supports RINEX v3.xx and v4.xx navigation files (including RINEX 4 message types: GPS LNAV, GLONASS FDMA, Galileo INAV/FNAV/IFNV, BeiDou D1/D2/D1D2).
 - Generates various plots, including:
   - Ionospheric delay over time and zenith-mapped ionospheric delay (combined).
   - The multipath effect plotted against time and elevation angle (combined).
@@ -57,6 +58,7 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
   - Polar plots of SNR and multipath.
   - Polar plot of each observed satellite in the system.
   - SNR versus time/elevation.
+  - Azimuth-vs-elevation heatmaps summarizing multipath and C/N₀ across all satellites (combined and per-system).
 - Extracts GLONASS FCN from RINEX navigation files.
 - Detects cycle slips and estimates the multipath effect.
 - Exports results to CSV and a Python dictionary as a Pickle (both compressed and uncompressed formats are supported).
@@ -190,7 +192,7 @@ for every estimates with elevation angle $\beta$ is below $30^{\circ}$ and $w =1
 The `GNSS_MultipathAnalysis` function accepts several keyword arguments that allow for detailed customization of the analysis process. Below is a list of the first five arguments:
 
 - **rinObsFilename** (`str`):
-  Path to the RINEX 3 observation file. This is a required argument.
+  Path to the RINEX observation file (v2.xx, v3.xx, or v4.xx). This is a required argument.
 
 - **broadcastNav1** (`Union[str, None]`, optional):
   Path to the first RINEX navigation file. Default is `None`.
@@ -281,7 +283,7 @@ The `GNSS_MultipathAnalysis` function accepts several keyword arguments that all
 
 
 ## Compatibility
-- **Python Versions:** Compatible with Python 3.8 and above.
+- **Python Versions:** Compatible with Python 3.10 and above (tested on 3.10, 3.11, 3.12, and 3.13).
 - **Dependencies:** All dependencies will be automatically installed with `pip install gnssmultipath`.
 
 
@@ -377,10 +379,11 @@ GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems, \
         readRinexObs(rinObs_file)
 ```
 
-### Read a RINEX navigation file (v.3)
+### Read a RINEX navigation file (v3 or v4)
 ```python
 from gnssmultipath import Rinex_v3_Reader
 
+# Works with both RINEX v3.xx and v4.xx navigation files
 rinNav_file = 'BRDC00IGS_R_20220010000_01D_MN.rnx'
 navdata = Rinex_v3_Reader().read_rinex_nav(rinNav_file, data_rate=60)
 ```
