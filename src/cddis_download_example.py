@@ -106,12 +106,12 @@ def download_multi_gnss_nav(
 def download_observation(
     year: int,
     doy: int,
-    station: str = "BRUX",
+    station: Optional[str] = None,
     rinex_version: int = 3,
     output_dir: Union[str, Path] = OUTPUT_DIR / "obs",
 ):
     """
-    Download a daily observation file for a specific station.
+    Download a daily observation file.
 
     Parameters
     ----------
@@ -119,8 +119,9 @@ def download_observation(
         4-digit year.
     doy : int
         Day of year (1-366).
-    station : str
+    station : str, optional
         4-character station name (e.g. "BRUX", "OPEC").
+        If *None*, the first available file in the directory is downloaded.
     rinex_version : int
         2 for RINEX v2 (.YYo), 3 for RINEX v3 Hatanaka (.crx).
     output_dir : str or Path
@@ -131,9 +132,10 @@ def download_observation(
     RINEX v3 observation files on CDDIS are Hatanaka-compressed (.crx).
     You may need the external tool ``crx2rnx`` to convert them.
     """
-    label = {2: "v2", 3: "v3 (Hatanaka .crx)"}
+    label = {2: "v2", 3: "v3 (Hatanaka .crx)", 4: "v4 (Hatanaka .crx)"}
+    station_label = station or "(any)"
     print(f"\nDownloading observation file — RINEX {label.get(rinex_version, rinex_version)}")
-    print(f"  Station: {station}  |  Date: {year} DOY {doy:03d}  |  Output: {output_dir}")
+    print(f"  Station: {station_label}  |  Date: {year} DOY {doy:03d}  |  Output: {output_dir}")
 
     with CDDISDownloader(username=EMAIL) as dl:
         obs_file = dl.download_observation(
@@ -144,7 +146,7 @@ def download_observation(
             output_dir=output_dir,
         )
         print(f"  -> Saved to: {obs_file}")
-        if rinex_version == 3:
+        if rinex_version in (3, 4):
             print("  Note: .crx files need crx2rnx for full decompression.")
     return obs_file
 
@@ -316,11 +318,15 @@ if __name__ == "__main__":
     # download_multi_gnss_nav(year=2024, doy=153)                   # DLR BRDM
 
     # -- Observation files --
-    # download_observation(year=2020, doy=305, station="BRUX", rinex_version=2)
+    download_observation(year=2022, doy=1, rinex_version=2)
     # download_observation(year=2024, doy=1, station="BRUX", rinex_version=3)
+    # download_observation(year=2025, doy=1, rinex_version=4)
+
+    # -- Broadcast navigation --
+    # download_broadcast_nav(year=2022, doy=1, rinex_version=4)
 
     # -- SP3 precise orbits --
-    download_sp3(year=2022, doy=1, product="igs")
+    # download_sp3(year=2022, doy=1, product="igs")
     # download_sp3_by_gps_week(gps_week=2295, day_of_week=0, product="igs")
 
     # -- Daily bundle (nav + obs + SP3 in one call) --

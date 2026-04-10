@@ -32,6 +32,7 @@ _GNSS_BAND_FREQ_MAP = {
 }
 
 _YES_NO = {1: 'Yes', 0: 'No'}
+_LABEL_WIDTH = 50  # column width for label alignment in output file
 
 _GNSS_NAME2CODE_FULL = {'GPS': 'G', 'GLONASS': 'R', 'Galileo': 'E', 'BeiDou': 'C'}
 
@@ -118,14 +119,14 @@ def _write_header(fid, analysisResults, GNSSsystems, nGNSSsystems,
     fid.write('Software version: %s\n' % __version__)
     fid.write('\n')
     fid.write('Software developed by Per Helge Aarnes (per.helge.aarnes@gmail.com) \n\n')
-    fid.write('RINEX observation filename:\t\t %s\n' % (rinex_obs_filename))
+    fid.write('%s %s\n' % ('RINEX observation filename:'.ljust(_LABEL_WIDTH), rinex_obs_filename))
     if sp3_filename is not None:
-        fid.write('SP3 filename:\t\t\t\t\t %s\n' % (','.join(sp3_filename)))
+        fid.write('%s %s\n' % ('SP3 filename:'.ljust(_LABEL_WIDTH), ','.join(sp3_filename)))
     else:
-        fid.write('Broadcast navigation filename:\t %s\n' % (','.join(broad_filename)))
-    fid.write('RINEX version:\t\t\t\t\t %s\n' % (rinexVersion.strip()))
-    fid.write('RINEX converting program:\t\t %s\n' % (rinexProgr))
-    fid.write('Rec. approx position (RINEX):    %s\n' % (rinex_rec_approx_pos))
+        fid.write('%s %s\n' % ('Broadcast navigation filename:'.ljust(_LABEL_WIDTH), ','.join(broad_filename)))
+    fid.write('%s %s\n' % ('RINEX version:'.ljust(_LABEL_WIDTH), rinexVersion.strip()))
+    fid.write('%s %s\n' % ('RINEX converting program:'.ljust(_LABEL_WIDTH), rinexProgr))
+    fid.write('%s %s\n' % ('Rec. approx position (RINEX):'.ljust(_LABEL_WIDTH), rinex_rec_approx_pos))
 
     if estimated_approx_pos:
         std_est_pos = (
@@ -133,24 +134,24 @@ def _write_header(fid, analysisResults, GNSSsystems, nGNSSsystems,
             esti_approx_pos_stats["Standard Deviations"]["Sy"],
             esti_approx_pos_stats["Standard Deviations"]["Sz"],
         )
-        fid.write('Est. approx position: \t\t\t %s\n' % str(estimated_approx_pos))
-        fid.write('St.dev of the est. position: \t %s\n' % ', '.join(map(str, std_est_pos)))
+        fid.write('%s %s\n' % ('Est. approx position:'.ljust(_LABEL_WIDTH), str(estimated_approx_pos)))
+        fid.write('%s %s\n' % ('St.dev of the est. position:'.ljust(_LABEL_WIDTH), ', '.join(map(str, std_est_pos))))
 
     tFirstObs_flat = tFirstObs.flatten()
     tLastObs_flat = tLastObs.flatten()
 
-    fid.write('Marker name:\t\t\t\t\t %s\n' % (markerName))
-    fid.write('Receiver type:\t\t\t\t\t %s\n' % (recType))
-    fid.write('Date of observation start:\t\t %4d/%d/%d %d:%d:%.2f \n' % (tFirstObs_flat[0],tFirstObs_flat[1],tFirstObs_flat[2],tFirstObs_flat[3],tFirstObs_flat[4],tFirstObs_flat[5]))
-    fid.write('Date of observation end:\t\t %4d/%d/%d %d:%d:%.2f \n'   % (tLastObs_flat[0],tLastObs_flat[1],tLastObs_flat[2],tLastObs_flat[3],tLastObs_flat[4],tLastObs_flat[5]))
-    fid.write('Observation interval [seconds]:\t %d\n' % (tInterval))
-    fid.write('Elevation angle cutoff [degree]: %d\n' % (elevation_cutoff))
-    fid.write('Number of receiver clock jumps:\t %d\n' % (nClockJumps))
-    fid.write('Average clock jumps interval:\t %s (std: %.2f seconds)\n\n' % (str(meanClockJumpInterval), stdClockJumpInterval))
+    fid.write('%s %s\n' % ('Marker name:'.ljust(_LABEL_WIDTH), markerName))
+    fid.write('%s %s\n' % ('Receiver type:'.ljust(_LABEL_WIDTH), recType))
+    fid.write('%s %4d/%d/%d %d:%d:%.2f\n' % ('Date of observation start:'.ljust(_LABEL_WIDTH), tFirstObs_flat[0],tFirstObs_flat[1],tFirstObs_flat[2],tFirstObs_flat[3],tFirstObs_flat[4],tFirstObs_flat[5]))
+    fid.write('%s %4d/%d/%d %d:%d:%.2f\n' % ('Date of observation end:'.ljust(_LABEL_WIDTH), tLastObs_flat[0],tLastObs_flat[1],tLastObs_flat[2],tLastObs_flat[3],tLastObs_flat[4],tLastObs_flat[5]))
+    fid.write('%s %d\n' % ('Observation interval [seconds]:'.ljust(_LABEL_WIDTH), tInterval))
+    fid.write('%s %d\n' % ('Elevation angle cutoff [degree]:'.ljust(_LABEL_WIDTH), elevation_cutoff))
+    fid.write('%s %d\n' % ('Number of receiver clock jumps:'.ljust(_LABEL_WIDTH), nClockJumps))
+    fid.write('%s %s (std: %.2f seconds)\n\n' % ('Average clock jumps interval:'.ljust(_LABEL_WIDTH), str(meanClockJumpInterval), stdClockJumpInterval))
 
     fid.write('Critical cycle slip limits [m/s]:\n')
-    fid.write('- Ionospheric delay:\t\t\t%6.3f\n'% (ionLimit))
-    fid.write('- Phase-code combination:\t\t%6.3f\n\n' % (phaseCodeLimit))
+    fid.write('%s%6.3f\n' % ('- Ionospheric delay:'.ljust(_LABEL_WIDTH), ionLimit))
+    fid.write('%s%6.3f\n\n' % ('- Phase-code combination:'.ljust(_LABEL_WIDTH), phaseCodeLimit))
     fid.write('GNSS systems presents in RINEX observation file:\n')
 
     for i in range(0,nGNSSsystems):
@@ -159,11 +160,12 @@ def _write_header(fid, analysisResults, GNSSsystems, nGNSSsystems,
     if not LLI_Active:
         fid.write('\n\nNOTE: As there were no "Loss-of-Lock" indicators in RINEX observation file,\n. No information concerining "Loss-of-Lock" indicators is included in output file')
 
-    fid.write('\n\nUser-specified contend included in output file\n')
-    fid.write('- Include overview of observations for each satellite:\t\t\t%s\n' % (_YES_NO[includeObservationOverview]))
-    fid.write('- Include compact summary of analysis estimates:\t\t\t\t%s\n' % (_YES_NO[includeCompactSummary]))
-    fid.write('- Include detailed summary of analysis\n   estimates, including for each individual satellite:\t\t\t%s\n' % (_YES_NO[includeResultSummary]))
-    fid.write('- Include information about "Loss-of-Lock"\n   indicators in detailed summary:\t\t\t\t\t\t\t\t%s\n' % (_YES_NO[includeLLIOverview]))
+    U = 58  # label column width for user-specified options
+    fid.write('\n\nUser-specified content included in output file\n')
+    fid.write('%s %s\n' % ('- Include overview of observations for each satellite:'.ljust(U), _YES_NO[includeObservationOverview]))
+    fid.write('%s %s\n' % ('- Include compact summary of analysis estimates:'.ljust(U), _YES_NO[includeCompactSummary]))
+    fid.write('- Include detailed summary of analysis\n%s %s\n' % ('  estimates, including for each individual satellite:'.ljust(U), _YES_NO[includeResultSummary]))
+    fid.write('- Include information about "Loss-of-Lock"\n%s %s\n' % ('  indicators in detailed summary:'.ljust(U), _YES_NO[includeLLIOverview]))
 
     fid.write('\n\n' + _SEP + '\n')
     fid.write(_SEP + '\n\n')
@@ -359,12 +361,10 @@ def _write_detailed_sat_row_with_lli(fid, code_struct, PRN, sys_code, glo_channe
     bins = _interleaved_slip_bins(r1, lli, both)
 
     if glo_channel is not None:
-        fid.write('|______|___________|____________|_______________|_________|______________|_______________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|\n')
         fid.write('|%6s|%11d|%12d|%15d|%9.3f|%14.3f|%15.3f|%10d|%7d|%8d|%10.3f|%7.3f|%8.3f|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|\n' % (
             sys_code + str(PRN), _safe_int(glo_channel), n_obs, n_est, rms, wrms, mean_elev,
             tot_r1, tot_lli, tot_both, ratio_r1, ratio_lli, ratio_both, *bins))
     else:
-        fid.write('|___|____________|_______________|_________|______________|_______________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|\n')
         fid.write('|%3s|%12d|%15d|%9.3f|%14.3f|%15.3f|%10d|%7d|%8d|%10.3f|%7.3f|%8.3f|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|%10d|%7d|%8d|\n' % (
             sys_code + str(PRN), n_obs, n_est, rms, wrms, mean_elev,
             tot_r1, tot_lli, tot_both, ratio_r1, ratio_lli, ratio_both, *bins))
@@ -384,12 +384,10 @@ def _write_detailed_sat_row_no_lli(fid, code_struct, PRN, sys_code, glo_channel=
     bins = _slip_bins(sd)
 
     if glo_channel is not None:
-        fid.write('|______|___________|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
         fid.write('|%6s|%11d|%12d|%15d|%9.3f|%14.3f|%15.3f|%15d|%10.3f|%17d|%17d|%17d|%17d|%17d|%17d|%17d|\n' % (
             sys_code + str(PRN), glo_channel, n_obs, n_est, rms, wrms, mean_elev,
             slip_tot, slip_ratio, *bins))
     else:
-        fid.write('|___|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
         fid.write('|%3s|%12d|%15d|%9.3f|%14.3f|%15.3f|%15d|%10.3f|%17d|%17d|%17d|%17d|%17d|%17d|%17d|\n' % (
             sys_code + str(PRN), n_obs, n_est, rms, wrms, mean_elev,
             slip_tot, slip_ratio, *bins))
@@ -423,8 +421,8 @@ def _write_detailed_summary(fid, analysisResults, GNSSsystems, GNSS_Name2Code,
                 fid.write('%s (%s)\n\n' % (bandName, BandNameMap[band_num]))
             else:
                 continue
-            fid.write('Frequency of carrier band [MHz]:\t\t\t\t\t %s\n' % (BandFreqMap[band_num]))
-            fid.write('Amount of code signals analysed in current band:\t %d \n' % nCodes)
+            fid.write('%s %s\n' % ('Frequency of carrier band [MHz]:'.ljust(_LABEL_WIDTH), BandFreqMap[band_num]))
+            fid.write('%s %d\n' % ('Amount of code signals analysed in current band:'.ljust(_LABEL_WIDTH), nCodes))
 
             for k in range(nCodes):
                 try:
@@ -436,16 +434,16 @@ def _write_detailed_summary(fid, analysisResults, GNSSsystems, GNSS_Name2Code,
                 nSat = len(code_struct['range1_slip_distribution_per_sat'])
 
                 fid.write('\n------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n\n')
-                fid.write('Code signal:\t\t\t\t\t\t\t\t\t %s\n\n' % range1Code)
-                fid.write('Second code signal\n(Utilized for linear combinations):\t\t\t\t %s\n' % (code_struct['range2_Code']))
-                fid.write('RMS multipath (All SVs) [meters]:\t\t\t\t%6.3f \n' % (code_struct['rms_multipath_range1_averaged']))
-                fid.write('Weighted RMS multipath (All SVs) [meters]:\t\t%6.3f \n' % (code_struct['elevation_weighted_average_rms_multipath_range1']))
-                fid.write('Number of %s observation epochs:\t\t\t\t %d \n' % (range1Code, code_struct['nRange1Obs']))
-                fid.write('N epochs with multipath estimates:\t\t\t\t %d \n' % (code_struct['nEstimates']))
-                fid.write('N ambiguity slips on %s signal:\t\t\t\t %d \n' % (
-                    range1Code, code_struct['range1_slip_distribution']['n_slips_Tot']))
-                fid.write('Ratio of N slip periods/N %s obs epochs [%%]:\t %.3f\n' % (
-                    range1Code, 100 * code_struct['range1_slip_distribution']['n_slips_Tot'] / code_struct['nRange1Obs']))
+                fid.write('%s %s\n\n' % ('Code signal:'.ljust(_LABEL_WIDTH), range1Code))
+                fid.write('Second code signal\n%s %s\n' % ('(Utilized for linear combinations):'.ljust(_LABEL_WIDTH), code_struct['range2_Code']))
+                fid.write('%s%6.3f\n' % ('RMS multipath (All SVs) [meters]:'.ljust(_LABEL_WIDTH), code_struct['rms_multipath_range1_averaged']))
+                fid.write('%s%6.3f\n' % ('Weighted RMS multipath (All SVs) [meters]:'.ljust(_LABEL_WIDTH), code_struct['elevation_weighted_average_rms_multipath_range1']))
+                fid.write('%s %d\n' % (('Number of %s observation epochs:' % range1Code).ljust(_LABEL_WIDTH), code_struct['nRange1Obs']))
+                fid.write('%s %d\n' % ('N epochs with multipath estimates:'.ljust(_LABEL_WIDTH), code_struct['nEstimates']))
+                fid.write('%s %d\n' % (('N ambiguity slips on %s signal:' % range1Code).ljust(_LABEL_WIDTH),
+                    code_struct['range1_slip_distribution']['n_slips_Tot']))
+                fid.write('%s %.3f\n' % (('Ratio of N slip periods/N %s obs epochs [%%]:' % range1Code).ljust(_LABEL_WIDTH),
+                    100 * code_struct['range1_slip_distribution']['n_slips_Tot'] / code_struct['nRange1Obs']))
 
                 # --- Satellite overview table ---
                 if includeLLIOverview:
@@ -468,10 +466,11 @@ def _write_detailed_sat_table_with_lli(fid, code_struct, nSat, sys_code, is_glon
         fid.write('|   |            |   Estimates   |[meters] |   [meters]   |   [degrees]   |                           |          [%]              |       0-10 degrees        |        10-20 degrees      |        20-30 degrees      |        30-40 degrees      |        40-50 degrees      |        >50 degrees        |        NaN degrees        |\n')
         fid.write('|   |            |               |         |              |               |___________________________|___________________________|___________________________|___________________________|___________________________|___________________________|___________________________|___________________________|___________________________|\n')
         fid.write('|   |            |               |         |              |               | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  |\n')
+        fid.write('|___|____________|_______________|_________|______________|_______________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|\n')
         for PRN in range(0, nSat):
             if code_struct['nEstimates_per_sat'][PRN] > 0:
                 _write_detailed_sat_row_with_lli(fid, code_struct, PRN, sys_code)
-            fid.write('|___|____________|_______________|_________|______________|_______________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|\n')
+                fid.write('|___|____________|_______________|_________|______________|_______________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|\n')
     else:
         fid.write('\nSatellite Overview\n')
         fid.write(' ____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________\n')
@@ -480,10 +479,11 @@ def _write_detailed_sat_table_with_lli(fid, code_struct, nSat, sys_code, is_glon
         fid.write('|      |           |            |   Estimates   |[meters] |   [meters]   |   [degrees]   |                           |          [%]              |       0-10 degrees        |        10-20 degrees      |        20-30 degrees      |        30-40 degrees      |        40-50 degrees      |        >50 degrees        |        NaN degrees        |\n')
         fid.write('|      |           |            |               |         |              |               |___________________________|___________________________|___________________________|___________________________|___________________________|___________________________|___________________________|___________________________|___________________________|\n')
         fid.write('|      |           |            |               |         |              |               | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  | Analysed |  LLI  |  Both  |\n')
+        fid.write('|______|___________|____________|_______________|_________|______________|_______________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|\n')
         for PRN in list(GLO_Slot2ChannelMap.keys()):
             if code_struct['nEstimates_per_sat'][PRN] > 0:
                 _write_detailed_sat_row_with_lli(fid, code_struct, PRN, sys_code, glo_channel=GLO_Slot2ChannelMap[PRN])
-        fid.write('|______|___________|____________|_______________|_________|______________|_______________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|\n')
+                fid.write('|______|___________|____________|_______________|_________|______________|_______________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|__________|_______|________|\n')
 
 
 def _write_detailed_sat_table_no_lli(fid, code_struct, nSat, sys_code, is_glonass, GLO_Slot2ChannelMap, range1Code):
@@ -494,20 +494,22 @@ def _write_detailed_sat_table_no_lli(fid, code_struct, nSat, sys_code, is_glonas
         fid.write('|   |    n %s   | n Epochs with |   RMS   | Weighted RMS |  Average Sat. |               | Slip/Obs | n Slip Periods  | n Slip Periods  | n Slip Periods  | n Slip Periods  | n Slip Periods  | n Slip Periods  | n Slip Periods  |\n' % range1Code)
         fid.write('|PRN|Observations|   Multipath   |Multipath|  Multipath   |Elevation Angle|    n Slip     |  Ratio   | Elevation Angle | Elevation Angle | Elevation Angle | Elevation Angle | Elevation Angle | Elevation Angle | Elevation Angle |\n')
         fid.write('|   |            |   Estimates   |[meters] |   [meters]   |   [degrees]   |    Periods    |   [%]    |  0-10 degrees   |  10-20 degrees  |  20-30 degrees  |  30-40 degrees  |  40-50 degrees  |   >50 degrees   |   NaN degrees   |\n')
+        fid.write('|___|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
         for PRN in range(0, nSat):
             if code_struct['nEstimates_per_sat'][PRN] > 0:
                 _write_detailed_sat_row_no_lli(fid, code_struct, PRN, sys_code)
-        fid.write('|___|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
+                fid.write('|___|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
     else:
         fid.write('\nSatellite Overview\n')
         fid.write(' _________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________ \n')
         fid.write('|      | Frequency |    n %s   | n Epochs with |   RMS   | Weighted RMS |  Average Sat. |               | Slip/Obs | n Slip Periods  | n Slip Periods  | n Slip Periods  | n Slip Periods  | n Slip Periods  | n Slip Periods  | n Slip Periods  |\n' % range1Code)
         fid.write('|Sat ID|  Channel  |Observations|   Multipath   |Multipath|  Multipath   |Elevation Angle|    n Slip     |  Ratio   | Elevation Angle | Elevation Angle | Elevation Angle | Elevation Angle | Elevation Angle | Elevation Angle | Elevation Angle |\n')
         fid.write('|      |           |            |   Estimates   |[meters] |   [meters]   |   [degrees]   |    Periods    |   [%]    |  0-10 degrees   |  10-20 degrees  |  20-30 degrees  |  30-40 degrees  |  40-50 degrees  |   >50 degrees   |   NaN degrees   |\n')
+        fid.write('|______|___________|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
         for PRN in list(GLO_Slot2ChannelMap.keys()):
             if code_struct['nEstimates_per_sat'][PRN] > 0:
                 _write_detailed_sat_row_no_lli(fid, code_struct, PRN, sys_code, glo_channel=GLO_Slot2ChannelMap[PRN])
-        fid.write('|______|___________|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
+                fid.write('|______|___________|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
 
 
 # ---------------------------------------------------------------------------

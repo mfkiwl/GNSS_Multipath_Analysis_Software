@@ -29,6 +29,7 @@ List files in a remote directory::
 
 import gzip
 import os
+import re
 import subprocess
 from datetime import datetime, timedelta
 from ftplib import FTP_TLS
@@ -315,28 +316,31 @@ class CDDISDownloader:
     # Observation files
     # ------------------------------------------------------------------
 
-    def download_observation(self, year: int, station: str,
+    def download_observation(self, year: int,
+                             station: Optional[str] = None,
                              doy: Optional[int] = None,
                              month: Optional[int] = None, day: Optional[int] = None,
                              rinex_version: int = 3,
                              output_dir: Union[str, Path] = ".",
                              decompress: bool = True) -> Path:
         """
-        Download a daily 30-second observation file for a specific station.
+        Download a daily 30-second observation file.
 
         Parameters
         ----------
         year : int
             4-digit year.
-        station : str
+        station : str, optional
             4-character station name (e.g. ``"BRUX"``, ``"OPEC"``).
+            If *None*, the first available file in the directory is
+            downloaded.
         doy : int, optional
             Day of year. Provide this OR (month, day).
         month, day : int, optional
             Calendar month and day.
         rinex_version : int, optional
-            2 for RINEX v2 (``.YYo.gz``), 3 for RINEX v3 Hatanaka
-            compressed (``.crx.gz``). Default: 3.
+            2 for RINEX v2 (``.YYo.gz``), 3 or 4 for RINEX v3/v4
+            long-name format (Hatanaka ``.crx.gz``). Default: 3.
         output_dir : str or Path, optional
             Local directory. Default: current dir.
         decompress : bool, optional
@@ -349,28 +353,63 @@ class CDDISDownloader:
 
         Notes
         -----
-        RINEX v3 observation files are archived in Hatanaka-compressed
+        RINEX v3/v4 observation files are archived in Hatanaka-compressed
         format (``.crx``). You may need an external tool (``crx2rnx``)
         to convert them to standard RINEX if required.
+        RINEX v4 obs files use the same CDDIS directory and long-name
+        convention as v3.
         """
         year, doy = _date_to_year_doy(year, month, day, doy)
         yy = f"{year % 100:02d}"
         ddd = f"{doy:03d}"
-        station = station.upper()
+        if station is not None:
+            station = station.upper()
 
         if rinex_version == 2:
-            filename = f"{station.lower()}{ddd}0.{yy}o.gz"
-            subdir = f"{yy}o"
-        elif rinex_version == 3:
-            # Search for the station file in the directory listing
+            # v2 obs have short names: ssss{ddd}s.{yy}o or ssss{ddd}s.{yy}d
+            # Must not match v3 long-name files in the same directory.
+            if station is not None:
+                pat = re.compile(
+                    rf"^{re.escape(station.lower())}{ddd}\d\.{yy}[od]", re.I
+                )
+            else:
+                pat = re.compile(
+                    rf"^\w{{4}}{ddd}\d\.{yy}[od]", re.I
+                )
+            filename = None
+            for subdir in (f"{yy}o", f"{yy}d"):
+                remote_dir = f"gnss/data/daily/{year}/{ddd}/{subdir}"
+                try:
+                    files = self.list_directory(remote_dir)
+                    matches = [f for f in files if pat.match(f)]
+                    if matches:
+                        filename = matches[0]
+                        break
+                except Exception:
+                    continue
+            if filename is None:
+                label = f"station '{station}'" if station else "any station"
+                raise FileNotFoundError(
+                    f"No RINEX v2 observation file found for {label} "
+                    f"in gnss/data/daily/{year}/{ddd}/{{YYo,YYd}}."
+                )
+        elif rinex_version in (3, 4):
+            # v3 and v4 obs files share the same CDDIS directory (YYd)
+            # Long-name format: SSSS00CCC_R_YYYYDDDHHMM_...
             subdir = f"{yy}d"
             remote_dir = f"gnss/data/daily/{year}/{ddd}/{subdir}"
+            # Pattern to identify v3+ long-name files (9-char station ID)
+            longname_pat = re.compile(r"^\w{9}_R_", re.I)
             try:
                 files = self.list_directory(remote_dir)
-                matches = [f for f in files if f.upper().startswith(station)]
+                if station is not None:
+                    matches = [f for f in files if f.upper().startswith(station)]
+                else:
+                    matches = [f for f in files if longname_pat.match(f)]
                 if not matches:
+                    label = f"station '{station}'" if station else "any station"
                     raise FileNotFoundError(
-                        f"No RINEX v3 observation file found for station '{station}' "
+                        f"No RINEX v{rinex_version} observation file found for {label} "
                         f"in {remote_dir}. Available files: {len(files)} total."
                     )
                 filename = matches[0]
@@ -381,7 +420,7 @@ class CDDISDownloader:
                     f"Could not access remote directory: {remote_dir}"
                 ) from e
         else:
-            raise ValueError(f"Unsupported rinex_version={rinex_version}. Use 2 or 3.")
+            raise ValueError(f"Unsupported rinex_version={rinex_version}. Use 2, 3, or 4.")
 
         remote_path = f"gnss/data/daily/{year}/{ddd}/{subdir}/{filename}"
         local_path = Path(output_dir) / filename

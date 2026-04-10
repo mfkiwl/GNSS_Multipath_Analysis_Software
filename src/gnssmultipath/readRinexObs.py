@@ -3279,21 +3279,23 @@ def rinexReadObsBlockHead211(fid):
         print('\nINFO(rinexReadObsBlockHead211): End of observations text file reached')
         return success, epochflag, clockOffset, date, numSV,SVlist, eof
 
-    epochflag   = line[28]
-    # skip to next block if event flag is more than 1
-    while int(epochflag) > 1:
+    epochflag   = int(line[28])
+    # Flags 2-5 are special events (moved antenna, header follows, etc.)
+    # The number of special records to skip is at columns 30-32.
+    while epochflag > 1:
         noFlag = 0
-        linejump = 0
-        pattern6 = r'\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+([A-Z\dG]+)'
-        while line:
-            match = re.search(pattern6, line)
-            if match:
-                break
-            line = fid.readline()
-            linejump += 1
-        epochflag = int(line[28])
-        msg = 'WARNING(rinexReadsObsBlockHead211): Observations event flag encountered. Flag = %s. %s lines were ignored.' % (str(epochflag), str(linejump))
+        num_special = int(line[29:32])
+        for _ in range(num_special):
+            fid.readline()
+        msg = 'WARNING(rinexReadsObsBlockHead211): Observations event flag %d encountered. %d special record(s) skipped.' % (epochflag, num_special)
         print(msg)
+        # Read the next epoch header line
+        line = fid.readline().rstrip()
+        if not line:
+            eof = 1
+            print('\nINFO(rinexReadObsBlockHead211): End of observations text file reached')
+            return success, epochflag, clockOffset, date, numSV, SVlist, eof
+        epochflag = int(line[28])
 
     # Gets the number of used satellites in obs epoch
     numSV = int(line[30:32])
@@ -3308,16 +3310,11 @@ def rinexReadObsBlockHead211(fid):
     date = [float(el) for el in date]
 
     if noFlag == 0:
-        msg2 = msg + '\nEpoch date = %.4d %.2d %.2d %.2d:%.2d:%6.4f' % (date[0],date[1],date[2],date[3],date[4],date[5])
-        print(msg2)
+        # RINEX 2 uses 2-digit years; convert for display
+        yr = int(date[0])
+        yr4 = yr + 2000 if yr < 80 else yr + 1900
+        print('Epoch date = %.4d %.2d %.2d %.2d:%.2d:%6.4f' % (yr4,date[1],date[2],date[3],date[4],date[5]))
 
-
-    # SVlist = []
-    # sat_overview = line.split(" ")[-1][len(str(numSV))::]
-    # pattern = re.compile(r'[A-Z][0-9]{2}')
-    # sat_list = re.findall(pattern, sat_overview)
-    # for sat in sat_list: ## droppe denne forloopen ?? SVlist og sat_list inneholder det samme??
-    #     SVlist.append(sat)
 
     SVlist = re.findall(r'[A-Z][0-9]{2}', line)
 
