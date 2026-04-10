@@ -364,9 +364,14 @@ class SatelliteEphemerisToECEF:
         if isinstance(rinex_nav_file, list):
             self.ephemerides, self.glo_fcn = self.read_a_list_of_nav_files(rinex_nav_file, data_rate=data_rate)
         else:
-            self.nav_data = Rinex_v3_Reader().read_rinex_nav(rinex_nav_file, desired_systems, data_rate=data_rate)
+            version, _ = RinexNav().read_header_lines(rinex_nav_file)
+            if version == 2:
+                self.nav_data = Rinex_v2_Reader().read_rinex_nav(rinex_nav_file)
+                self.glo_fcn = self.nav_data.get('glonass_fcn', None)
+            else:
+                self.nav_data = Rinex_v3_Reader().read_rinex_nav(rinex_nav_file, desired_systems, data_rate=data_rate)
+                self.glo_fcn = self.nav_data.get('glonass_fcn', None)
             self.ephemerides = self.nav_data['ephemerides']
-            self.glo_fcn = self.nav_data['glonass_fcn']
 
         self.x_rec = x_rec
         self.y_rec = y_rec

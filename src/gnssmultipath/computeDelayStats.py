@@ -160,6 +160,11 @@ def computeDelayStats(ion_delay_phase1, multipath_range1, current_sat_elevation_
     """
     nSat = len(range1_slip_periods)
 
+    # copy inputs so we don't mutate the caller's arrays
+    ion_delay_phase1 = ion_delay_phase1.copy()
+    multipath_range1 = multipath_range1.copy()
+    current_sat_elevation_angles = current_sat_elevation_angles.copy()
+
     # set all 0 values to NaN so they are excluded from stats calculation
     ion_delay_phase1[ion_delay_phase1==0] = np.nan
     multipath_range1[multipath_range1==0] = np.nan

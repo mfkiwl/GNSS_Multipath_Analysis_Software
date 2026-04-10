@@ -245,67 +245,73 @@ class Rinex_v2_Reader(RinexNav):
             filnr = open(filename, 'r')
         except OSError:
             print("Could not open/read file: %s", filename)
+            raise
 
-
-        line = filnr.readline().rstrip()
-        header = []
-        while 'END OF HEADER' not in line:
+        try:
             line = filnr.readline().rstrip()
-            header.append(line)
-
-        data  = np.zeros((1,36))
-
-        while line != '':
-            block_arr = np.array([])
-            ## -- Read first line of navigation message
-            line = filnr.readline().rstrip()
-
-            # Replacing 'D' with 'E' ('D' is fortran syntax for exponentiall form)
-            line = line.replace('D','E')
-            ## -- Have to add space between datacolums where theres no whitespace
-            for idx, val in enumerate(line):
-                if line[0:2] != ' ' and line[22] != ' ':
-                    line = line[:22] + " " + line[22:]
-                if line[idx] == 'e' or line[idx] == 'E' and idx !=0:
-                    line = line[:idx+4] + " " + line[idx+4:]
-            nl = [el for el in line.split(" ") if el != ""]
-            if nl:
-                # Keep consistent with navigation file version 3
-                nl[0] = 'G' + nl[0]
-                nl[1] = '20' + nl[1]
-                nl[6] = int(float(nl[6]))
-            block_arr =np.append(block_arr,np.array([nl]))
-            block_arr = block_arr.reshape(1,len(block_arr))
-
-            ## Looping throug the next 7-lines for current message (satellitte)
-            for i in np.arange(0,7):
+            header = []
+            while 'END OF HEADER' not in line:
                 line = filnr.readline().rstrip()
-                ## -Replacing 'D' with 'E'
+                header.append(line)
+
+            data  = np.zeros((1,36))
+
+            while line != '':
+                block_arr = np.array([])
+                ## -- Read first line of navigation message
+                line = filnr.readline().rstrip()
+
+                # Replacing 'D' with 'E' ('D' is fortran syntax for exponentiall form)
                 line = line.replace('D','E')
                 ## -- Have to add space between datacolums where theres no whitespace
                 for idx, val in enumerate(line):
-                    #Increase judgment e
-                    if line[idx] == 'E' or line[idx] == 'e':
+                    if line[0:2] != ' ' and line[22] != ' ':
+                        line = line[:22] + " " + line[22:]
+                    if line[idx] == 'e' or line[idx] == 'E' and idx !=0:
                         line = line[:idx+4] + " " + line[idx+4:]
-
-                ## --Reads the line vector nl from the text string line and adds navigation
-                # message for the relevant satellite n_sat. It becomes a long line vector
-                # for the relevant message and satellite.
                 nl = [el for el in line.split(" ") if el != ""]
-                block_arr = np.append(block_arr,np.array([nl]))
+                if nl:
+                    # Keep consistent with navigation file version 3 (zero-padded PRN)
+                    nl[0] = 'G' + nl[0].zfill(2)
+                    year_2digit = int(nl[1])
+                    nl[1] = str(2000 + year_2digit) if year_2digit < 80 else str(1900 + year_2digit)
+                    nl[6] = int(float(nl[6]))
+                block_arr =np.append(block_arr,np.array([nl]))
                 block_arr = block_arr.reshape(1,len(block_arr))
 
-            ## -- Collecting all data into common variable
-            if block_arr.shape[1] > 36:
-                block_arr = block_arr[:,0:36]
-            if np.size(block_arr) != 0:
-                data  = np.concatenate([data , block_arr], axis=0)
-            else:
-                data  = np.delete(data , (0), axis=0)
-                print('File %s is read successfully!' % (filename))
+                ## Looping throug the next 7-lines for current message (satellitte)
+                for i in np.arange(0,7):
+                    line = filnr.readline().rstrip()
+                    ## -Replacing 'D' with 'E'
+                    line = line.replace('D','E')
+                    ## -- Have to add space between datacolums where theres no whitespace
+                    for idx, val in enumerate(line):
+                        #Increase judgment e
+                        if line[idx] == 'E' or line[idx] == 'e':
+                            line = line[:idx+4] + " " + line[idx+4:]
 
+                    ## --Reads the line vector nl from the text string line and adds navigation
+                    # message for the relevant satellite n_sat. It becomes a long line vector
+                    # for the relevant message and satellite.
+                    nl = [el for el in line.split(" ") if el != ""]
+                    block_arr = np.append(block_arr,np.array([nl]))
+                    block_arr = block_arr.reshape(1,len(block_arr))
 
-        filnr.close()
+                ## -- Collecting all data into common variable
+                if block_arr.shape[1] > 36:
+                    block_arr = block_arr[:,0:36]
+                if np.size(block_arr) != 0:
+                    data  = np.concatenate([data , block_arr], axis=0)
+                else:
+                    data  = np.delete(data , (0), axis=0)
+                    print('File %s is read successfully!' % (filename))
+
+        finally:
+            filnr.close()
+
+        # Remove the initial row of zeros
+        if data.shape[0] > 1 and np.all(data[0] == '0.0') or np.all(data[0] == 0):
+            data = data[1:]
         n_eph = len(data)
         if dataframe == 'yes' or dataframe == 'YES':
             data = DataFrame(data)

@@ -1,5 +1,9 @@
 """
-Module for reading RINEX observation files in v2 and v3.
+Module for reading RINEX observation files in v2, v3, and v4.
+
+RINEX v4 observation files use the same record format as v3.xx,
+so the v3.04 reader handles them directly. The major v4 changes
+affect navigation files (new message-type headers), not observations.
 
 Made by: Per Helge Aarnes
 E-mail: per.helge.aarnes@gmail.com
@@ -18,15 +22,22 @@ global tFirstObs
 def readRinexObs(filename, readSS=None, readLLI=None, includeAllGNSSsystems=None,includeAllObsCodes=None, \
                                       desiredGNSSsystems=None, desiredObsCodes=None, desiredObsBands=None):
     """
-    Function that chooses which function to use based on header info.
+    Function that chooses which reader to use based on the RINEX version in the file header.
+
+    - RINEX v2.xx  -> readRinexObs211
+    - RINEX v3.xx / v4.xx  -> readRinexObs304
+
+    RINEX v4 observation files share the same record format as v3, so
+    the v3.04 reader is used for both.
     """
 
-    fid = open(filename,'r')
     if os.stat(filename).st_size == 0:
         raise ValueError('ERROR: This file seems to be empty')
-    line = fid.readline().rstrip()
+    with open(filename, 'r') as fid:
+        line = fid.readline().rstrip()
     rinexVersion = line[0:9].strip()
-    if '2' in rinexVersion.split('.')[0]:
+    major_version = rinexVersion.split('.')[0]
+    if major_version == '2':
         GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems,\
             obsCodes, approxPosition, max_sat, tInterval, markerName, rinexVersion, recType, timeSystem, leapSec, gnssType,\
             rinexProgr, rinexDate, antDelta, tFirstObs, tLastObs, clockOffsetsON, GLO_Slot2ChannelMap, success=  readRinexObs211(filename, readSS=None, readLLI=None, includeAllGNSSsystems=None,includeAllObsCodes=None, \
@@ -46,7 +57,11 @@ def readRinexObs(filename, readSS=None, readLLI=None, includeAllGNSSsystems=None
 def readRinexObs304(filename, readSS=None, readLLI=None, includeAllGNSSsystems=None,includeAllObsCodes=None, \
                     desiredGNSSsystems=None, desiredObsCodes=None, desiredObsBands=None):
     """
-    Program/function to read GNSS observations in RINEX 3.04 observation files
+    Program/function to read GNSS observations in RINEX 3.04/4.xx observation files.
+
+    RINEX v4 observation files use the same record format as v3.xx,
+    so this reader handles both versions.
+
     The main core of the program is 4 functions:
                                   rinexReadObsFileHeader304
                                   rinexReadObsBlockHead304

@@ -251,8 +251,7 @@ def compute_azimut_elev(X,Y,Z,xm,ym,zm):
                 az.append(np.rad2deg(arctan(east[p]/north[p])) + 360)
             else:
                 az.append(np.rad2deg(arctan(east[p]/north[p])))
-            # elev.append(arcsin(up[p]/(sqrt(east[p]**2 + north[p]**2 + up[p]**2)))*(180/pi))
-            elev.append(np.rad2deg(atanc(up, sqrt(east**2 + north**2))))
+            elev.append(np.rad2deg(atanc(up[p], sqrt(east[p]**2 + north[p]**2))))
 
     return az,elev
 
@@ -484,8 +483,8 @@ def compute_GLO_coord_from_nav(ephemerides, time_epochs):
     ## Read in data:
     toc = [ephemerides[1],ephemerides[2] ,ephemerides[3] ,ephemerides[4],ephemerides[5],ephemerides[6]] # year,month,day,hour,minute,second
     week,toc = date2gpstime(int(ephemerides[1]),int(ephemerides[2]) ,int(ephemerides[3]) ,int(ephemerides[4]),int(ephemerides[5]),int(ephemerides[6]))
-    tauN = ephemerides[6]   # SV clock bias (sec) (-TauN)
-    gammaN = ephemerides[7] # SV relative frequency bias (+GammaN)
+    tauN = ephemerides[7]   # SV clock bias (sec) (-TauN)
+    gammaN = ephemerides[8] # SV relative frequency bias (+GammaN)
 
     # week_rec, tow_rec = time_epochs[0,1]  # extracting tow
     week_rec, tow_rec = time_epochs  # extracting tow
@@ -536,9 +535,9 @@ def compute_GLO_coord_from_nav(ephemerides, time_epochs):
         if abs(tdiff) < tstep:
             tt = tdiff
         k1 = glonass_diff_eq(state, acc)
-        k2 = glonass_diff_eq(state + k1*tt/2, -acc)
-        k3 = glonass_diff_eq(state + k2*tt/2, -acc)
-        k4 = glonass_diff_eq(state + k3*tt, -acc)
+        k2 = glonass_diff_eq(state + k1*tt/2, acc)
+        k3 = glonass_diff_eq(state + k2*tt/2, acc)
+        k4 = glonass_diff_eq(state + k3*tt, acc)
         state += (k1 + 2*k2 + 2*k3 + k4)*tt/6.0
         tdiff -= tt
 

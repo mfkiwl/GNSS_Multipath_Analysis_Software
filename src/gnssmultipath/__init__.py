@@ -26,3 +26,4 @@ from .Geodetic_functions import *
 from .SatelliteEphemerisToECEF import SatelliteEphemerisToECEF
 from .GNSSPositionEstimator import GNSSPositionEstimator
 from .SP3PositionEstimator import SP3PositionEstimator
+from .utils import CDDISDownloader

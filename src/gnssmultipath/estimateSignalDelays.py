@@ -319,7 +319,7 @@ def create_array_for_current_obscode(GNSS_obs, obscode_idx):
         code_array = np.stack(list(GNSS_obs.values()))[:, :, obscode_idx]
         code_array = np.squeeze(code_array)
         code_array[code_array == 0] = np.nan
-    except:
+    except (IndexError, ValueError, KeyError):
         code_array = None
     return code_array
 

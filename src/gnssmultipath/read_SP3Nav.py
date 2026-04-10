@@ -66,6 +66,15 @@ def readSP3Nav(filename, desiredGNSSsystems=None):
         success = 0
         raise ValueError('No file selected!') from exc
 
+    try:
+        return _readSP3Nav_impl(fid, filename, desiredGNSSsystems)
+    finally:
+        fid.close()
+
+
+def _readSP3Nav_impl(fid, filename, desiredGNSSsystems):
+    success = 1
+    epochInterval = None
 
     if desiredGNSSsystems is None:
         desiredGNSSsystems = ["G", "R", "E", "C"]
