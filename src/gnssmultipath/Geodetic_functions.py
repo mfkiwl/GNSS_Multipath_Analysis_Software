@@ -742,11 +742,92 @@ def gpstime_to_utc_datefmt(time_epochs_gpstime: np.ndarray) -> list:
 
 def date2gpstime_vectorized(gregorian_date_array):
     """
-    Convert from gregorian dates to GPS time by using
-    np.vectorization.
+    Convert an array of Gregorian dates to GPS time (week number + time-of-week).
+
+    This is the array version of ``date2gpstime``. Instead of looping over
+    each date in Python (via ``np.vectorize``), it computes the result for
+    all dates at once using pure NumPy arithmetic.
+
+    The algorithm works in three steps:
+
+    1. **Gregorian → ordinal day number**
+       Uses the well-known Julian Day Number formula to convert
+       (year, month, day) into a running day count, entirely with integer
+       array arithmetic.  The formula first shifts January and February
+       into months 11–12 of the *previous* year so that the leap-day
+       always falls at the end of the adjusted "year", which makes the
+       month-length term ``(153*m + 2) // 5`` work uniformly.
+
+    2. **Ordinal day → GPS week + fractional week**
+       Subtracts the GPS epoch (6 Jan 1980) ordinal, then divides by 7
+       to get the (fractional) week number.  ``np.fix`` truncates toward
+       zero to obtain the integer week.
+
+    3. **Fractional week → time-of-week (TOW)**
+       The fractional part of the week is scaled to seconds (×604 800)
+       and the intra-day time (hours, minutes, seconds) is added.
+
+    Parameters
+    ----------
+    gregorian_date_array : array_like, shape (N, 6)
+        Each row is ``[year, month, day, hour, minute, second]``.
+
+    Returns
+    -------
+    weeks : np.ndarray, shape (N,)
+        GPS week numbers (rounded to nearest integer).
+    tows : np.ndarray, shape (N,)
+        Time-of-week in seconds (rounded to nearest integer).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> dates = np.array([[2022, 1, 1, 0, 0, 0],
+    ...                   [2022, 1, 1, 12, 30, 15]])
+    >>> weeks, tows = date2gpstime_vectorized(dates)
+    >>> weeks
+    array([2190., 2190.])
+    >>> tows
+    array([518400., 563415.])
     """
-    years, months, days, hours, minutes, seconds = gregorian_date_array.astype(float).astype(int).T
-    weeks, tows = np.vectorize(date2gpstime)(years, months, days, hours, minutes, seconds)
+    arr = np.asarray(gregorian_date_array)
+    years, months, days, hours, minutes, seconds = arr.astype(float).astype(int).T
+
+    # --- Step 1: Gregorian calendar → Julian Day Number (vectorized) ---
+    # Shift Jan (month 1) and Feb (month 2) to months 13/14 of the prior
+    # year so that the leap day is always the last day of the adjusted year.
+    a = (14 - months) // 12            # 1 for Jan/Feb, 0 otherwise
+    y = years - a                      # adjusted year
+    m = months + 12 * a - 3            # adjusted month (0 = March … 11 = Feb)
+
+    # Julian Day Number from the proleptic Gregorian calendar.
+    # The term (153*m + 2)//5 gives the cumulative day count for the
+    # adjusted month, exploiting the pattern of 30/31-day months from
+    # March onward.
+    ordinal = (days
+               + (153 * m + 2) // 5   # cumulative days in adjusted months
+               + 365 * y              # days from full years
+               + y // 4               # leap years every 4 years …
+               - y // 100             # … except every 100 years …
+               + y // 400             # … but every 400 years
+               + 1721119)             # offset to Julian Day epoch
+
+    # --- Step 2: Ordinal → GPS week ---
+    # t0: Python ordinal of the GPS epoch (6 Jan 1980), shifted by +366
+    #     to match the scalar ``date2gpstime`` convention.
+    # t1: Convert our Julian Day Number to the same shifted-ordinal basis
+    #     (subtract 1721425, the JDN↔Python-ordinal offset, then add 366).
+    t0 = date.toordinal(date(1980, 1, 6)) + 366
+    t1 = ordinal - 1721425 + 366
+    week_flt = (t1 - t0) / 7.0
+    weeks = np.fix(week_flt)           # truncate toward zero → integer week
+
+    # --- Step 3: Fractional week → time-of-week in seconds ---
+    tows = ((week_flt - weeks) * 604800.0
+            + hours * 3600
+            + minutes * 60
+            + seconds)
+
     return np.round(weeks), np.round(tows)
 
 

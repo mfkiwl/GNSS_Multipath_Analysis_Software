@@ -560,7 +560,7 @@ class SatelliteEphemerisToECEF:
         lat_rec, lon_rec, _ = ECEF2geodb(a, b, x_rec, y_rec, z_rec)
 
         # Convert differences to local ENU (East, North, Up) coordinates
-        east, north, up = np.vectorize(ECEF2enu)(lat_rec, lon_rec, dX, dY, dZ)
+        east, north, up = ECEF2enu_batch(lat_rec, lon_rec, dX, dY, dZ)
 
         # Calculate azimuth angle and correct for quadrants
         azimuth = np.rad2deg(np.arctan(east / north))
