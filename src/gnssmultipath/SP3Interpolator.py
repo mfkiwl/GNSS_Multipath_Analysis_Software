@@ -380,9 +380,13 @@ if __name__ == "__main__":
     des_time = date2gpstime_vectorized(np.array([desired_time]))[-1]
     xyz_nav = navdata.get_sat_ecef_coordinates(desired_time=des_time, PRN="G01")
 
-    GNSS_obs,_, _, _, time_epochs, nepochs, GNSSsystems,\
-    obsCodes, _, _, tInterval, _, _, _, _, _, _,\
-    _, _, _, _, _, _, _, _ = readRinexObs(rinObs)
+    obs_data = readRinexObs(rinObs)
+    GNSS_obs = obs_data.GNSS_obs
+    time_epochs = obs_data.time_epochs
+    nepochs = obs_data.nepochs
+    GNSSsystems = obs_data.GNSSsystems
+    obsCodes = obs_data.obsCodes
+    tInterval = obs_data.tInterval
 
     observation_times = gpstime2date_arrays(time_epochs[:,0],time_epochs[:,1])
 

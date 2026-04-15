@@ -16,6 +16,7 @@ from gnssmultipath.readRinexObs import (
     readRinexObs,
     readRinexObs304,
     rinexReadObsFileHeader304,
+    RinexObsData,
 )
 
 
@@ -156,14 +157,32 @@ class TestRinex304ObservationBlocks:
     def _read_obs(self, rinex304_obs_file):
         """Read the cropped observation file once for the class."""
         cls = type(self)
-        (cls.GNSS_obs, cls.GNSS_LLI, cls.GNSS_SS, cls.GNSS_SVs,
-         cls.time_epochs, cls.nepochs, cls.GNSSsystems, cls.obsCodes,
-         cls.approxPosition, cls.max_sat, cls.tInterval, cls.markerName,
-         cls.rinexVersion, cls.recType, cls.timeSystem, cls.leapSec,
-         cls.gnssType, cls.rinexProgr, cls.rinexDate, cls.antDelta,
-         cls.tFirstObs, cls.tLastObs, cls.clockOffsetsON,
-         cls.GLO_Slot2ChannelMap, cls.success
-        ) = readRinexObs(rinex304_obs_file)
+        rinex_data = readRinexObs(rinex304_obs_file)
+        cls.GNSS_obs = rinex_data.GNSS_obs
+        cls.GNSS_LLI = rinex_data.GNSS_LLI
+        cls.GNSS_SS = rinex_data.GNSS_SS
+        cls.GNSS_SVs = rinex_data.GNSS_SVs
+        cls.time_epochs = rinex_data.time_epochs
+        cls.nepochs = rinex_data.nepochs
+        cls.GNSSsystems = rinex_data.GNSSsystems
+        cls.obsCodes = rinex_data.obsCodes
+        cls.approxPosition = rinex_data.approxPosition
+        cls.max_sat = rinex_data.max_sat
+        cls.tInterval = rinex_data.tInterval
+        cls.markerName = rinex_data.markerName
+        cls.rinexVersion = rinex_data.rinexVersion
+        cls.recType = rinex_data.recType
+        cls.timeSystem = rinex_data.timeSystem
+        cls.leapSec = rinex_data.leapSec
+        cls.gnssType = rinex_data.gnssType
+        cls.rinexProgr = rinex_data.rinexProgr
+        cls.rinexDate = rinex_data.rinexDate
+        cls.antDelta = rinex_data.antDelta
+        cls.tFirstObs = rinex_data.tFirstObs
+        cls.tLastObs = rinex_data.tLastObs
+        cls.clockOffsetsON = rinex_data.clockOffsetsON
+        cls.GLO_Slot2ChannelMap = rinex_data.GLO_Slot2ChannelMap
+        cls.success = rinex_data.success
 
     def test_success(self):
         assert self.success == 1
@@ -302,14 +321,32 @@ class TestRinex211ObservationFile:
     @pytest.fixture(autouse=True, scope="class")
     def _read_obs(self, rinex211_obs_file):
         cls = type(self)
-        (cls.GNSS_obs, cls.GNSS_LLI, cls.GNSS_SS, cls.GNSS_SVs,
-         cls.time_epochs, cls.nepochs, cls.GNSSsystems, cls.obsCodes,
-         cls.approxPosition, cls.max_sat, cls.tInterval, cls.markerName,
-         cls.rinexVersion, cls.recType, cls.timeSystem, cls.leapSec,
-         cls.gnssType, cls.rinexProgr, cls.rinexDate, cls.antDelta,
-         cls.tFirstObs, cls.tLastObs, cls.clockOffsetsON,
-         cls.GLO_Slot2ChannelMap, cls.success
-        ) = readRinexObs(rinex211_obs_file)
+        rinex_data = readRinexObs(rinex211_obs_file)
+        cls.GNSS_obs = rinex_data.GNSS_obs
+        cls.GNSS_LLI = rinex_data.GNSS_LLI
+        cls.GNSS_SS = rinex_data.GNSS_SS
+        cls.GNSS_SVs = rinex_data.GNSS_SVs
+        cls.time_epochs = rinex_data.time_epochs
+        cls.nepochs = rinex_data.nepochs
+        cls.GNSSsystems = rinex_data.GNSSsystems
+        cls.obsCodes = rinex_data.obsCodes
+        cls.approxPosition = rinex_data.approxPosition
+        cls.max_sat = rinex_data.max_sat
+        cls.tInterval = rinex_data.tInterval
+        cls.markerName = rinex_data.markerName
+        cls.rinexVersion = rinex_data.rinexVersion
+        cls.recType = rinex_data.recType
+        cls.timeSystem = rinex_data.timeSystem
+        cls.leapSec = rinex_data.leapSec
+        cls.gnssType = rinex_data.gnssType
+        cls.rinexProgr = rinex_data.rinexProgr
+        cls.rinexDate = rinex_data.rinexDate
+        cls.antDelta = rinex_data.antDelta
+        cls.tFirstObs = rinex_data.tFirstObs
+        cls.tLastObs = rinex_data.tLastObs
+        cls.clockOffsetsON = rinex_data.clockOffsetsON
+        cls.GLO_Slot2ChannelMap = rinex_data.GLO_Slot2ChannelMap
+        cls.success = rinex_data.success
 
     def test_success(self):
         assert self.success == 1

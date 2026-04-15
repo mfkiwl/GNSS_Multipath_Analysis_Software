@@ -79,8 +79,11 @@ class SP3PositionEstimator:
 
         # Load RINEX observation data
         if rinex_obs_file:
-            self.GNSS_obs, _, _, _, self.time_epochs, _, self.GNSSsystems, \
-                self.obsCodes, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = readRinexObs(rinex_obs_file)
+            obs_data = readRinexObs(rinex_obs_file)
+            self.GNSS_obs = obs_data.GNSS_obs
+            self.time_epochs = obs_data.time_epochs
+            self.GNSSsystems = obs_data.GNSSsystems
+            self.obsCodes = obs_data.obsCodes
         else:
             self.GNSS_obs = GNSS_obs
             self.time_epochs = time_epochs

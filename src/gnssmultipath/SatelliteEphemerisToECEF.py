@@ -11,7 +11,7 @@ import numpy as np
 from numpy import ndarray
 from tqdm import tqdm
 from gnssmultipath.Geodetic_functions import date2gpstime_vectorized, get_leap_seconds, gpstime2date_arrays, ECEF2enu, ECEF2enu_batch, ECEF2geodb
-from gnssmultipath.RinexNav import Rinex_v3_Reader,Rinex_v2_Reader,RinexNav
+from gnssmultipath.RinexNav import RinexNav
 
 
 
@@ -362,16 +362,11 @@ class SatelliteEphemerisToECEF:
             desired_systems = ["G", "R", "E", "C"]
 
         if isinstance(rinex_nav_file, list):
-            self.ephemerides, self.glo_fcn = self.read_a_list_of_nav_files(rinex_nav_file, data_rate=data_rate)
+            self.ephemerides, self.glo_fcn = self.read_a_list_of_nav_files(rinex_nav_file, desired_systems, data_rate=data_rate)
         else:
-            version, _ = RinexNav().read_header_lines(rinex_nav_file)
-            if version == 2:
-                self.nav_data = Rinex_v2_Reader().read_rinex_nav(rinex_nav_file)
-                self.glo_fcn = self.nav_data.get('glonass_fcn', None)
-            else:
-                self.nav_data = Rinex_v3_Reader().read_rinex_nav(rinex_nav_file, desired_systems, data_rate=data_rate)
-                self.glo_fcn = self.nav_data.get('glonass_fcn', None)
-            self.ephemerides = self.nav_data['ephemerides']
+            self.nav_data = RinexNav.read_nav(rinex_nav_file, desired_GNSS=desired_systems, data_rate=data_rate)
+            self.glo_fcn = self.nav_data.glonass_fcn
+            self.ephemerides = self.nav_data.ephemerides
 
         self.x_rec = x_rec
         self.y_rec = y_rec
@@ -387,22 +382,18 @@ class SatelliteEphemerisToECEF:
         self.total_sats = sum(len(self.prn_overview[sys])for sys in self.available_systems)
 
 
-    def read_a_list_of_nav_files(self, rinex_nav_file, data_rate):
+    def read_a_list_of_nav_files(self, rinex_nav_file, desired_systems, data_rate):
         """
         Reads in a list of RINEX navigation files and merge the data
         into one data array.
         """
         nav_files = [nav_file for nav_file in rinex_nav_file if nav_file != ""]
         nav_datas = []
-        for  nav_file in nav_files:
-            version, header = RinexNav().read_header_lines(nav_file)
-            if version == 2:
-                nav_data = Rinex_v2_Reader().read_rinex_nav(nav_file)
-            elif version >= 3:
-                nav_data = Rinex_v3_Reader().read_rinex_nav(nav_file, data_rate=data_rate)
-            nav_datas.append(nav_data['ephemerides'])
+        for nav_file in nav_files:
+            nav_data = RinexNav.read_nav(nav_file, desired_GNSS=desired_systems, data_rate=data_rate)
+            nav_datas.append(nav_data.ephemerides)
         data = np.concatenate(nav_datas, axis=0)
-        glonass_fcn = nav_data.get('glonass_fcn', None)
+        glonass_fcn = nav_data.glonass_fcn
         data = np.unique(data, axis=0) # ensure no duplicates
         return data, glonass_fcn
 

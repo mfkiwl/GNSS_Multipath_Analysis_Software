@@ -1,524 +1,548 @@
 """
-This module contains a parent class called RinexNav with two subclasess for reading RINEX
-navigation files.
+Comprehensive RINEX navigation file reader supporting versions 2, 3, and 4.
 
-Example on how to use it:
-from gnssmultipath import Rinex_v3_Reader
-navdata = Rinex_v3_Reader().read_rinex_nav(nav_file)
+Reads broadcast ephemerides for GPS, GLONASS, Galileo, and BeiDou from RINEX
+navigation files and stores them in a structured ``RinexNavData`` dataclass.
 
+Supported message types per system:
 
+  * **GPS**     -- LNAV  (v2/v3/v4)
+  * **GLONASS** -- FDMA  (v2/v3/v4)
+  * **Galileo** -- INAV, FNAV, IFNV  (v3/v4)
+  * **BeiDou**  -- D1, D2, D1D2  (v3/v4)
+
+Usage::
+
+    from gnssmultipath.RinexNav import RinexNav
+    nav_data = RinexNav.read_nav("path/to/nav.rnx")
 
 Made by: Per Helge Aarnes
 E-mail: per.helge.aarnes@gmail.com
 """
 
+from __future__ import annotations
+
 import re
 import warnings
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import List, Optional, Union
+
 import numpy as np
+from numpy import ndarray
 from pandas import DataFrame
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
-class RinexNav:
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
-    def __init__(self):
-        self.dataframe = None
-        self.block_len = {'G' : 7, 'R': 3, 'E' : 7, 'C': 7}
-        self.rinex4_body_len = {'G': 8, 'R': 5, 'E': 8, 'C': 8}
-        self.supported_rinex4_nav_messages = {
-            'G': {'LNAV'},
-            'R': {'FDMA'},
-            'E': {'INAV', 'FNAV', 'IFNV'},
-            'C': {'D1', 'D2', 'D1D2'},
-        }
-        self.glo_fcn = None
+# Number of broadcast-orbit data lines per system (excluding the epoch line).
+_ORBIT_LINES: dict[str, int] = {"G": 7, "R": 3, "E": 7, "C": 7}
+
+# Body-line count for RINEX v4 EPH records (epoch line + orbit lines).
+_RINEX4_BODY_LEN: dict[str, int] = {"G": 8, "R": 5, "E": 8, "C": 8}
+
+# Supported nav-message families for v4 filtering.
+_SUPPORTED_V4_MESSAGES: dict[str, set[str]] = {
+    "G": {"LNAV"},
+    "R": {"FDMA"},
+    "E": {"INAV", "FNAV", "IFNV"},
+    "C": {"D1", "D2", "D1D2"},
+}
+
+# Total columns in the output ephemerides array.
+_N_COLS = 36
+
+# Regex that replaces Fortran-style 'D'/'d' exponent notation with 'E'.
+_FORTRAN_EXP = re.compile(r"(?<=[0-9.])[Dd](?=[+-]?\d)")
 
 
-    def filter_data_rinex_nav(self, filename, desired_GNSS, data_rate=30, version=None):
-        """
-        This function is creating a list of lists that contain ephemeride data
-        for the desired GNSS systems only. The rate of data can be set by the user.
-        Default value is 30 min.
-        """
-        with open(filename, "r") as f:
-            lines = f.readlines()
+# ---------------------------------------------------------------------------
+# Data container
+# ---------------------------------------------------------------------------
 
-        if version is None:
-            version = self._parse_rinex_version(lines[0])
 
-        if version >= 4:
-            desired_lines = self._filter_rinex4_nav_messages(lines, desired_GNSS)
+@dataclass
+class RinexNavData:
+    """Container for parsed RINEX navigation data.
+
+    Attributes
+    ----------
+    ephemerides : ndarray | DataFrame
+        Ephemeris matrix of shape ``(n, 36)``.  Column layout:
+
+        * ``0``     -- PRN string (e.g. ``'G01'``, ``'R24'``)
+        * ``1-6``   -- Epoch: year, month, day, hour, minute, second
+        * ``7-9``   -- Clock: af0 (bias), af1 (drift), af2 (drift-rate)
+        * ``10-35`` -- Broadcast-orbit parameters (system-specific)
+
+        For **GLONASS**, only columns 10-21 carry meaningful values (position,
+        velocity, acceleration, health, frequency-number, age-of-data); the
+        remaining columns are zero-padded to maintain uniform shape.
+    header : list[str]
+        Raw header lines (up to and including ``END OF HEADER``).
+    nepochs : int
+        Number of ephemeris records.
+    glonass_fcn : dict[int, int] | None
+        Mapping of GLONASS slot number to frequency-channel number (FCN).
+        ``None`` when no GLONASS data is present.
+    """
+
+    ephemerides: Union[ndarray, DataFrame]
+    header: list = field(default_factory=list)
+    nepochs: int = 0
+    glonass_fcn: Optional[dict] = None
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_version(first_line: str) -> int:
+    """Return the major RINEX version from the first header line."""
+    try:
+        return int(float(first_line[:9].strip()))
+    except ValueError as exc:
+        raise ValueError(f"Cannot parse RINEX version from: {first_line.rstrip()!r}") from exc
+
+
+def _fortran_to_float_str(text: str) -> str:
+    """Replace Fortran D/d exponent notation with E."""
+    return _FORTRAN_EXP.sub("E", text)
+
+
+def _parse_v3_data_line(line: str) -> list[str]:
+    """Parse a fixed-width (4 x 19-char) v3/v4 broadcast-orbit data line.
+
+    Each orbit line has format ``3X,4D19.12`` -- four 19-character fields
+    starting at column 4.  Falls back to whitespace splitting for
+    short/truncated lines.
+    """
+    line = _fortran_to_float_str(line.rstrip())
+    fields: list[str] = []
+    starts = (4, 23, 42, 61)
+    for s in starts:
+        chunk = line[s : s + 19].strip() if len(line) > s else ""
+        if chunk:
+            fields.append(chunk)
+    if not fields:
+        fields = line.split()
+    return fields
+
+
+def _parse_v3_epoch_line(line: str) -> list:
+    """Parse a v3/v4 epoch line into ``[PRN, Y, M, D, H, Min, Sec, af0, af1, af2]``."""
+    line = _fortran_to_float_str(line.rstrip())
+    prn = line[:3].strip()
+    year   = line[4:8].strip()
+    month  = line[9:11].strip()
+    day    = line[12:14].strip()
+    hour   = line[15:17].strip()
+    minute = line[18:20].strip()
+    second = line[21:23].strip()
+    af0 = line[23:42].strip()
+    af1 = line[42:61].strip()
+    af2 = line[61:80].strip() if len(line) > 61 else "0"
+    return [prn, year, month, day, hour, minute, int(float(second)), af0, af1, af2]
+
+
+def _parse_v2_epoch_line(line: str) -> list:
+    """Parse a RINEX v2 GPS epoch line into v3-compatible tokens."""
+    line = _fortran_to_float_str(line.rstrip())
+    # Ensure space between seconds field and af0 (position 22).
+    if len(line) > 22 and line[22] not in (" ", "\t"):
+        line = line[:22] + " " + line[22:]
+    # Insert spaces after exponent+digits where fields are stuck together.
+    line = re.sub(r"([eE][+-]?\d\d)(-)", r"\1 \2", line)
+    parts = line.split()
+    if not parts:
+        return []
+    prn = f"G{int(parts[0]):02d}"
+    year_2d = int(parts[1])
+    year = str(2000 + year_2d) if year_2d < 80 else str(1900 + year_2d)
+    second = int(float(parts[6]))
+    return [prn, year, parts[2], parts[3], parts[4], parts[5], second] + parts[7:10]
+
+
+def _parse_v2_data_line(line: str) -> list[str]:
+    """Parse a RINEX v2 broadcast-orbit data line (``3X,4D19.12``)."""
+    line = _fortran_to_float_str(line.rstrip())
+    line = re.sub(r"([eE][+-]?\d\d)(-)", r"\1 \2", line)
+    return line.split()
+
+
+# ---------------------------------------------------------------------------
+# File reading helpers
+# ---------------------------------------------------------------------------
+
+
+def _read_header(filename: str) -> tuple[int, list[str]]:
+    """Read header lines and detect RINEX version.
+
+    Returns
+    -------
+    version : int
+        Major RINEX version (2, 3, or 4).
+    header : list[str]
+        All header lines including ``END OF HEADER``.
+    """
+    header: list[str] = []
+    with open(filename, "r") as f:
+        for line in f:
+            stripped = line.rstrip()
+            header.append(stripped)
+            if "END OF HEADER" in stripped:
+                break
+    if not header:
+        raise ValueError(f"Empty or unreadable navigation file: {filename}")
+    return _parse_version(header[0]), header
+
+
+def _read_body_lines(filename: str) -> list[str]:
+    """Read all lines after the header."""
+    lines: list[str] = []
+    past_header = False
+    with open(filename, "r") as f:
+        for line in f:
+            if past_header:
+                lines.append(line)
+            elif "END OF HEADER" in line:
+                past_header = True
+    return lines
+
+
+# ---------------------------------------------------------------------------
+# Block extraction
+# ---------------------------------------------------------------------------
+
+_V2_EPOCH_RE = re.compile(r"^\s*\d{1,2}\s+\d{2}\s+\d{1,2}\s+\d{1,2}")
+_V3_EPOCH_RE = re.compile(r"^[GREC]\d{2}")
+
+
+def _extract_v2_blocks(body: list[str]) -> list[list[str]]:
+    """Extract 8-line ephemeris blocks from RINEX v2 body lines (GPS only)."""
+    blocks: list[list[str]] = []
+    idx = 0
+    n = len(body)
+    while idx < n:
+        if _V2_EPOCH_RE.match(body[idx]):
+            end = min(idx + 8, n)
+            block = body[idx:end]
+            if len(block) == 8:
+                blocks.append(block)
+            idx = end
         else:
-            pattern = r'^[' + ''.join(desired_GNSS) + ']\d{2}'
-            desired_lines = [
-                lines[idx:idx + self.block_len[line[0]] + 1]
-                for idx, line in enumerate(lines)
-                if re.match(pattern, line) is not None
-            ]
-
-        if not desired_lines:
-            return []
-
-        desired_lines = self.filter_ephemeris_data_on_time(desired_lines, time_difference_minutes=data_rate)  # remove epochs with time difference less than specified time
-        return desired_lines
+            idx += 1
+    return blocks
 
 
-    def _parse_rinex_version(self, first_line):
-        version_string = first_line[0:9].strip()
-        try:
-            return int(float(version_string))
-        except ValueError as exc:
-            raise ValueError(f"Unable to parse RINEX version from header line: {first_line.rstrip()}") from exc
+def _extract_v3_blocks(body: list[str], desired_systems: set[str]) -> list[list[str]]:
+    """Extract ephemeris blocks from RINEX v3 body lines."""
+    blocks: list[list[str]] = []
+    idx = 0
+    n = len(body)
+    while idx < n:
+        if _V3_EPOCH_RE.match(body[idx]):
+            sys_char = body[idx][0]
+            n_orbit = _ORBIT_LINES.get(sys_char, 7)
+            end = idx + 1 + n_orbit
+            if sys_char in desired_systems and end <= n:
+                blocks.append(body[idx:end])
+            idx = max(end, idx + 1)
+        else:
+            idx += 1
+    return blocks
 
 
-    def _filter_rinex4_nav_messages(self, lines, desired_GNSS):
-        header_end_idx = next((idx for idx, line in enumerate(lines) if 'END OF HEADER' in line), None)
-        if header_end_idx is None:
-            raise ValueError('RINEX navigation file header is missing END OF HEADER.')
+def _extract_v4_blocks(all_lines: list[str], desired_systems: set[str]) -> list[list[str]]:
+    """Extract ephemeris blocks from RINEX v4 ``> EPH`` records.
 
-        desired_lines = []
-        idx = header_end_idx + 1
-        while idx < len(lines):
-            line = lines[idx]
-            if not line.startswith('> EPH'):
-                idx += 1
-                continue
+    Parameters
+    ----------
+    all_lines : list[str]
+        All file lines (including header).
+    desired_systems : set[str]
+        System letters to include (e.g. ``{'G', 'R', 'E', 'C'}``).
 
-            tokens = line.split()
-            if len(tokens) < 4:
-                idx += 1
-                continue
-
-            sat_id = tokens[2]
-            system = sat_id[0]
-            nav_message_type = tokens[3].upper()
-
-            next_header_idx = idx + 1
-            while next_header_idx < len(lines) and not lines[next_header_idx].startswith('>'):
-                next_header_idx += 1
-
-            message_lines = lines[idx + 1:next_header_idx]
-            expected_body_len = self.rinex4_body_len.get(system, self.block_len.get(system, 0) + 1)
-            if system in desired_GNSS and nav_message_type in self.supported_rinex4_nav_messages.get(system, set()):
-                if len(message_lines) != expected_body_len:
-                    raise ValueError(
-                        f"Unexpected number of data lines for {sat_id} ({nav_message_type}): "
-                        f"expected {expected_body_len}, got {len(message_lines)}."
-                    )
-                desired_lines.append(message_lines)
-
-            idx = next_header_idx
-
-        return desired_lines
-
-
-    def filter_ephemeris_data_on_time(self, ephemeris_list, time_difference_minutes=30):
-        """
-        Filter rinex nav data based on time. The desired data rate can be set
-        by time_difference_minutes. Default value is 30 min.
-        """
-        if not ephemeris_list:
-            return []
-
-        filtered_data = []
-        time_difference = timedelta(minutes=time_difference_minutes)
-        previous_epoch_str = ephemeris_list[0][0].split()[1:6]
-        previous_epoch = datetime(*map(int, previous_epoch_str))
-        prev_sys = ephemeris_list[0][0].split()[0][0]
-        prev_sat = ephemeris_list[0][0].split()[0]
-        for ephemeris_sublist in ephemeris_list:
-            current_sys = ephemeris_sublist[0].split()[0][0]
-            current_sat = ephemeris_sublist[0].split()[0]
-            epoch_str = ephemeris_sublist[0].split()[1:6]
-            epoch = datetime(*map(int, epoch_str))
-            if prev_sys != current_sys: # check if new system
-                filtered_data.append(ephemeris_sublist)
-                previous_epoch = epoch
-                prev_sys = current_sys
-            elif prev_sys == current_sys and prev_sat != current_sat: # check if new satellite within same sys
-                filtered_data.append(ephemeris_sublist)
-                previous_epoch = epoch
-                prev_sat = current_sat
-
-            # Calculate the time difference between the current epoch and the previous one
-            # Appends the data if the time diff is greater than the set limit, or if it is the first epoch (filtered_data is empty)
-            time_diff = epoch - previous_epoch
-            if time_diff >= time_difference or not filtered_data:
-                filtered_data.append(ephemeris_sublist)
-                previous_epoch = epoch
-
-        return filtered_data
-
-
-    def extract_glonass_fcn_from_rinex_nav(self, data_array):
-        """
-        Extract the GLONASS frequency channels numbers (FCN) from
-        RINEX navigation file.
-
-        Input:
-        ------
-        data_array: numpy array containing ephemerides for all avaible systems
-
-        Output:
-        ------
-        fcn_dict: dictionary with PRN as keys and FCN as values {'R01': 1,'R02': -4, 'R03': 5,...}
-        """
-        # Get the PRN and FCN columns
-        prn_column = data_array[:, 0]  # PRN numbers have index 0
-        glo_rows = np.char.startswith(prn_column, 'R') # Create array with GLONASS data only
-        glo_data = data_array[glo_rows]
-        unique_prns_name, unique_glo_prns_idx = np.unique(glo_data[:, 0], return_index=True)
-        PRN_data = glo_data[unique_glo_prns_idx] # ephemeride array with glonass only
-        # Create dictionary with PRN as keys and FCN as values
-        fcn_dict = {int(prn[1::]): int(fcn) for prn, fcn in zip(PRN_data[:,0], PRN_data[:,17].astype(float).astype(int))}
-        return fcn_dict
-
-
-
-    def read_header_lines(self, filename):
-        """
-        Read content of the header of a RINEX navigation file.
-        """
-        header = []
-        try:
-            with open(filename, 'r') as file:
-                lines = file.readlines()
-                #Get the navigation file version
-                firstline = lines[0]
-                version = self._parse_rinex_version(firstline)
-                for line in lines:
-                    line = line.rstrip()
-                    header.append(line)
-                    if 'END OF HEADER' in line:
-                        break
-        except OSError as e:
-            print(f"Could not open/read file: {filename}\nError: {e}")
-            return
-        return version,header
-
-
-
-
-
-
-class Rinex_v2_Reader(RinexNav):
+    Returns
+    -------
+    list[list[str]]
+        Body lines of each matching EPH record.
     """
-    Class for reading RINEX v2 navigation files.
+    header_end = 0
+    for i, line in enumerate(all_lines):
+        if "END OF HEADER" in line:
+            header_end = i + 1
+            break
 
-    Example on how to use it:
-    from gnssmultipath import Rinex_v2_Reader
-    navdata = Rinex_v2_Reader().read_rinex_nav(nav_file)
+    blocks: list[list[str]] = []
+    idx = header_end
+    n = len(all_lines)
+    while idx < n:
+        line = all_lines[idx]
+        if not line.startswith("> EPH"):
+            idx += 1
+            continue
 
+        tokens = line.split()
+        if len(tokens) < 4:
+            idx += 1
+            continue
+
+        sat_id = tokens[2]
+        sys_char = sat_id[0]
+        msg_type = tokens[3].upper()
+
+        # Find the next record header.
+        end = idx + 1
+        while end < n and not all_lines[end].startswith(">"):
+            end += 1
+
+        body = all_lines[idx + 1 : end]
+        expected = _RINEX4_BODY_LEN.get(sys_char, _ORBIT_LINES.get(sys_char, 0) + 1)
+
+        if (
+            sys_char in desired_systems
+            and msg_type in _SUPPORTED_V4_MESSAGES.get(sys_char, set())
+        ):
+            if len(body) != expected:
+                raise ValueError(
+                    f"Unexpected number of data lines for {sat_id} ({msg_type}): "
+                    f"expected {expected}, got {len(body)}."
+                )
+            blocks.append(body)
+
+        idx = end
+
+    return blocks
+
+
+# ---------------------------------------------------------------------------
+# Block -> row parsing
+# ---------------------------------------------------------------------------
+
+
+def _parse_v2_block(block: list[str]) -> ndarray:
+    """Parse one v2 8-line block into a ``(1, 36)`` object ndarray."""
+    tokens = _parse_v2_epoch_line(block[0])
+    if not tokens:
+        return np.empty((0, _N_COLS), dtype=object)
+    row: list = list(tokens)
+    for line in block[1:]:
+        row.extend(_parse_v2_data_line(line))
+    row = row[:_N_COLS]
+    while len(row) < _N_COLS:
+        row.append("0")
+    return np.array(row, dtype=object).reshape(1, _N_COLS)
+
+
+def _parse_v3_block(block: list[str], is_glonass: bool) -> ndarray:
+    """Parse one v3/v4 ephemeris block into a ``(1, 36)`` object ndarray.
+
+    GLONASS blocks (fewer orbit parameters) are zero-padded to 36 columns.
+    Non-GLONASS blocks with missing trailing fields get ``'nan'``.
     """
-    def __init__(self):
-        super().__init__()
+    tokens = _parse_v3_epoch_line(block[0])
+    row: list = list(tokens)
+    for line in block[1:]:
+        row.extend(_parse_v3_data_line(line))
+    pad = "0" if is_glonass else "nan"
+    row = row[:_N_COLS]
+    while len(row) < _N_COLS:
+        row.append(pad)
+    return np.array(row, dtype=object).reshape(1, _N_COLS)
 
-    def read_rinex_nav(self, filename, dataframe = None):
-        """
-        Reads the navigation message from GPS broadcast efemerids in RINEX v.2 format. (GPS only)
 
-        Reads one navigation message at a time until the end of the row. Accumulate in
-        in a common matrix, "data", where there is a line for each message.
-        Note that each message forms a block in the file and that the same satellite
-        can have several messages, usually with an hour's difference in reference time.
+# ---------------------------------------------------------------------------
+# Time-based filtering
+# ---------------------------------------------------------------------------
 
+
+def _filter_on_time(blocks: list[list[str]], interval_minutes: float) -> list[list[str]]:
+    """Keep at most one ephemeris per satellite per *interval_minutes*.
+
+    Tracks each satellite independently so that interleaved multi-satellite
+    data is filtered correctly regardless of ordering.
+
+    Parameters
+    ----------
+    blocks : list[list[str]]
+        Ephemeris blocks (each is a list of raw lines).
+    interval_minutes : float
+        Minimum time gap between retained records of the same satellite.
+        ``0`` disables filtering.
+    """
+    if not blocks or interval_minutes <= 0:
+        return blocks
+
+    delta = timedelta(minutes=interval_minutes)
+    filtered: list[list[str]] = []
+    last_epoch: dict[str, datetime] = {}
+
+    for block in blocks:
+        parts = block[0].split()
+        sat = parts[0]
+        epoch = datetime(*map(int, parts[1:6]))
+        prev = last_epoch.get(sat)
+        if prev is None or (epoch - prev) >= delta:
+            filtered.append(block)
+            last_epoch[sat] = epoch
+
+    return filtered
+
+
+# ---------------------------------------------------------------------------
+# GLONASS FCN extraction
+# ---------------------------------------------------------------------------
+
+
+def _extract_glonass_fcn(data: ndarray) -> Optional[dict[int, int]]:
+    """Extract GLONASS frequency-channel numbers from the ephemeris array.
+
+    Returns ``{slot_number: fcn}`` or ``None`` when no GLONASS rows exist.
+    """
+    prns = data[:, 0].astype(str)
+    glo_mask = np.char.startswith(prns, "R")
+    if not np.any(glo_mask):
+        return None
+    glo_data = data[glo_mask]
+    _, idx = np.unique(glo_data[:, 0], return_index=True)
+    unique = glo_data[idx]
+    return {int(p[1:]): int(float(f)) for p, f in zip(unique[:, 0], unique[:, 17])}
+
+
+# ---------------------------------------------------------------------------
+# Main reader class
+# ---------------------------------------------------------------------------
+
+
+class RinexNav:
+    """Unified RINEX navigation-file reader (v2 / v3 / v4).
+
+    Only ``@staticmethod`` and ``@classmethod`` methods -- no instance state.
+    Primary entry point: :meth:`read_nav`.
+
+    Examples
+    --------
+    >>> from gnssmultipath.RinexNav import RinexNav
+    >>> nav = RinexNav.read_nav("BRDC00IGS_R_20220010000_01D_MN.rnx")
+    >>> nav.ephemerides.shape
+    (1234, 36)
+    """
+
+    @staticmethod
+    def read_nav(
+        filename: str,
+        desired_GNSS: Optional[List[str]] = None,
+        dataframe: bool = False,
+        data_rate: float = 30,
+    ) -> RinexNavData:
+        """Read a RINEX navigation file (auto-detecting version).
 
         Parameters
         ----------
-        filename : Filename of the RINEX navigation file
-        dataframe : Set to 'yes' or 'YES' to get the data output as a pandas DataFrame (array as default)
-
-        Returns
-        -------
-        data : Matrix with data for all epochs
-        header: List with header content
-        n_eph: Number of epochs
-
-
+        filename : str
+            Path to the RINEX navigation file.
+        desired_GNSS : list[str] | None
+            System letters to include (e.g. ``['G', 'R', 'E', 'C']``).
+            Defaults to all four global systems.
+        dataframe : bool
+            If ``True``, return ephemerides as a :class:`~pandas.DataFrame`.
+        data_rate : float
+            Minimum interval in minutes between retained ephemerides of the
+            same satellite.  ``0`` keeps all records.
         """
+        if desired_GNSS is None:
+            desired_GNSS = ["G", "R", "E", "C"]
+        version, header = _read_header(filename)
+        if version == 2:
+            return _read_v2(filename, header, dataframe=dataframe)
+        return _read_v3v4(
+            filename, header, version,
+            desired_systems=set(desired_GNSS),
+            dataframe=dataframe,
+            data_rate=data_rate,
+        )
 
 
-        try:
-            print('Reading broadcast ephemeris from RINEX-navigation file.....')
-            filnr = open(filename, 'r')
-        except OSError:
-            print("Could not open/read file: %s", filename)
-            raise
-
-        try:
-            line = filnr.readline().rstrip()
-            header = []
-            while 'END OF HEADER' not in line:
-                line = filnr.readline().rstrip()
-                header.append(line)
-
-            data  = np.zeros((1,36))
-
-            while line != '':
-                block_arr = np.array([])
-                ## -- Read first line of navigation message
-                line = filnr.readline().rstrip()
-
-                # Replacing 'D' with 'E' ('D' is fortran syntax for exponentiall form)
-                line = line.replace('D','E')
-                ## -- Have to add space between datacolums where theres no whitespace
-                for idx, val in enumerate(line):
-                    if line[0:2] != ' ' and line[22] != ' ':
-                        line = line[:22] + " " + line[22:]
-                    if line[idx] == 'e' or line[idx] == 'E' and idx !=0:
-                        line = line[:idx+4] + " " + line[idx+4:]
-                nl = [el for el in line.split(" ") if el != ""]
-                if nl:
-                    # Keep consistent with navigation file version 3 (zero-padded PRN)
-                    nl[0] = 'G' + nl[0].zfill(2)
-                    year_2digit = int(nl[1])
-                    nl[1] = str(2000 + year_2digit) if year_2digit < 80 else str(1900 + year_2digit)
-                    nl[6] = int(float(nl[6]))
-                block_arr =np.append(block_arr,np.array([nl]))
-                block_arr = block_arr.reshape(1,len(block_arr))
-
-                ## Looping throug the next 7-lines for current message (satellitte)
-                for i in np.arange(0,7):
-                    line = filnr.readline().rstrip()
-                    ## -Replacing 'D' with 'E'
-                    line = line.replace('D','E')
-                    ## -- Have to add space between datacolums where theres no whitespace
-                    for idx, val in enumerate(line):
-                        #Increase judgment e
-                        if line[idx] == 'E' or line[idx] == 'e':
-                            line = line[:idx+4] + " " + line[idx+4:]
-
-                    ## --Reads the line vector nl from the text string line and adds navigation
-                    # message for the relevant satellite n_sat. It becomes a long line vector
-                    # for the relevant message and satellite.
-                    nl = [el for el in line.split(" ") if el != ""]
-                    block_arr = np.append(block_arr,np.array([nl]))
-                    block_arr = block_arr.reshape(1,len(block_arr))
-
-                ## -- Collecting all data into common variable
-                if block_arr.shape[1] > 36:
-                    block_arr = block_arr[:,0:36]
-                if np.size(block_arr) != 0:
-                    data  = np.concatenate([data , block_arr], axis=0)
-                else:
-                    data  = np.delete(data , (0), axis=0)
-                    print('File %s is read successfully!' % (filename))
-
-        finally:
-            filnr.close()
-
-        # Remove the initial row of zeros
-        if data.shape[0] > 1 and np.all(data[0] == '0.0') or np.all(data[0] == 0):
-            data = data[1:]
-        n_eph = len(data)
-        if dataframe == 'yes' or dataframe == 'YES':
-            data = DataFrame(data)
-
-        # Create a dictinary for the data
-        nav_data = {'ephemerides':data,
-                    'header':header,
-                    'nepohs': n_eph
-                    }
-
-        return nav_data
+# ---------------------------------------------------------------------------
+# Internal reader implementations
+# ---------------------------------------------------------------------------
 
 
+def _read_v2(filename: str, header: list[str], dataframe: bool = False) -> RinexNavData:
+    """Read a RINEX v2 navigation file (GPS only)."""
+    print("Reading broadcast ephemeris from RINEX-navigation file.....")
+    body = _read_body_lines(filename)
+    blocks = _extract_v2_blocks(body)
+    if not blocks:
+        return RinexNavData(ephemerides=np.empty((0, _N_COLS), dtype=object), header=header, nepochs=0)
 
-class Rinex_v3_Reader(RinexNav):
-    """
-    Class for reading RINEX v3 navigation files.
+    rows = [_parse_v2_block(b) for b in blocks if b]
+    rows = [r for r in rows if r.size > 0]
+    if not rows:
+        return RinexNavData(ephemerides=np.empty((0, _N_COLS), dtype=object), header=header, nepochs=0)
 
-    Example on how to use it:
-    from gnssmultipath import Rinex_v3_Reader
-    navdata = Rinex_v3_Reader().read_rinex_nav(nav_file)
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.valid_systems = {'G', 'R', 'E', 'C'}
-
-
-    def read_rinex_nav(self, filename, desired_GNSS: list = ['G','R','E','C'], dataframe = False, data_rate = 30):
-        """
-        Reads the navigation message from broadcast efemerids in RINEX v.3 format.
-        Support all global systems: GPS, GLONASS, Galileo and BeiDou
-
-        Reads one navigation message at a time until the end of the row. Accumulate in
-        in a common matrix, "data", where there is a line for each message.
-        Note that each message forms a block in the file and that the same satellite
-        can have several messages, usually with an hour's difference in reference time.
+    data = np.vstack(rows).astype(str)
+    n_eph = len(data)
+    if dataframe in (True, "yes", "YES"):
+        data = DataFrame(data)
+    return RinexNavData(ephemerides=data, header=header, nepochs=n_eph)
 
 
-        Parameters
-        ----------
-        filename : Filename of the RINEX navigation file
-        desired_GNSS: List of desired systems. Ex desired_GNSS = ['G','R','E']
-        dataframe : Set to True to get the data output as a pandas DataFrame (array as default)
-        data_rate: The desired data rate of ephemerides given in minutes. Default is 30 min.
+def _read_v3v4(
+    filename: str,
+    header: list[str],
+    version: int,
+    desired_systems: set[str],
+    dataframe: bool = False,
+    data_rate: float = 30,
+) -> RinexNavData:
+    """Read a RINEX v3 or v4 navigation file."""
+    for s in desired_systems:
+        if s not in {"G", "R", "E", "C"}:
+            raise ValueError(f"Invalid GNSS system '{s}'. Must be one of 'G', 'R', 'E', 'C'.")
 
-        Returns
-        -------
-        data : Matrix with data for all epochs (or dataframe)
-        header: List with header content
-        n_eph: Number of epochs
-        glo_fcn: Dictionary containing Glonass FCN is GLONASS included in rinex nav
+    if version >= 4:
+        with open(filename, "r") as f:
+            all_lines = f.readlines()
+        raw_blocks = _extract_v4_blocks(all_lines, desired_systems)
+    else:
+        body = _read_body_lines(filename)
+        raw_blocks = _extract_v3_blocks(body, desired_systems)
 
-
-        """
-
-        for sys in desired_GNSS:
-            if not all(letter in self.valid_systems for letter in sys):
-                raise ValueError("Invalid GNSS system in desired_GNSS list. Must be one these ['G','R','E','C'].")
-
-        version, header = self.read_header_lines(filename)
-        nav_lines = self.filter_data_rinex_nav(filename, desired_GNSS, data_rate=data_rate, version=version)
-        if not nav_lines:
-            data = np.empty((0, 36), dtype=object)
-            nav_data = {'ephemerides':data,
-                        'header':header,
-                        'nepohs': 0,
-                        'glonass_fcn': None}
-            if dataframe:
-                nav_data['ephemerides'] = DataFrame(data)
-            return nav_data
-        current_epoch = 0
-        n_update_break = max(1, len(nav_lines) // 10)
-        n_ep = 100 if len(nav_lines)>10 else len(nav_lines)
-        bar_format = '{desc}: {percentage:3.0f}%|{bar}| ({n_fmt}/{total_fmt})'
-        with tqdm(total= n_ep, desc ="Rinex navigation file is being read" , position=0, leave=True, bar_format=bar_format) as pbar:
-            data  = np.zeros((1,36))
-            for lines in nav_lines:
-                line = lines[0].rstrip()
-                block_arr = np.array([])
-                sys_PRN = line[0:3]
-                line = line.replace('D','E') # Replacing 'D' with 'E' ('D' is fortran syntax for exponentiall form)
-                ## -- Have to add space between datacolums where theres no whitespace
-                for idx, val in enumerate(line):
-                    if line[0:2] != ' ' and line[23] != ' ':
-                        line = line[:23] + " " + line[23:]
-                    if line[idx] == 'e' or line[idx] == 'E' and idx !=0:
-                        line = line[:idx+4] + " " + line[idx+4:]
-
-                fl = [el for el in line.split(" ") if el != ""]
-                block_arr = np.append(block_arr,np.array([fl]))
-                block_arr = block_arr.reshape(1,len(block_arr))
-
-                ## Looping throug the next 3-lines for current message (satellitte) (GLONASS)
-                if 'R' in sys_PRN:
-                    for i in np.arange(1,len(lines)):
-                        line = lines[i].rstrip()
-                        line = line.replace('D','E') # Replacing 'D' with 'E' ('D' is fortran syntax for exponentiall form)
-                        ## -- Have to add space between datacolums where theres no whitespace
-                        for idx, val in enumerate(line):
-                            if line[idx] == 'e' or line[idx] == 'E':
-                                line = line[:idx+4] + " " + line[idx+4:]
-
-                        ## --Reads the line vector nl from the text string line and adds navigation
-                        # message for the relevant satellite n_sat. It becomes a long line vector
-                        # for the relevant message and satellite.
-                        nl = [el for el in line.split(" ") if el != ""]
-                        block_arr = np.append(block_arr,np.array([nl]))
-                        block_arr = block_arr.reshape(1,len(block_arr))
-                else:
-                    ## Looping throug the next 7-lines for current message (satellitte) (GPS,Galileo,BeiDou)
-                    for i in np.arange(1,len(lines)):
-                        line = lines[i].rstrip()
-                        line = line.replace('D','E') # Replacing 'D' with 'E' ('D' is fortran syntax for exponentiall form)
-                        if line == '':
-                            continue
-                        else:
-                            ## -- Have to add space between datacolums where theres no whitespace
-                            for idx, val in enumerate(line):
-                                if line[idx] == 'e' or line[idx] == 'E':
-                                    line = line[:idx+4] + " " + line[idx+4:]
-
-                            ## Reads the line vector nl from the text string line and adds navigation
-                            # message for the relevant satellite n_sat. It becomes a long line vector
-                            # for the relevant message and satellite.
-                            ## Runs through line to see if each line contains 4 objects. If not, adds nan.
-                            if i < 7 and line.lower().count('e') < 4:
-                                if line[10:20].strip() == '':
-                                    line = line[:10] +  'nan' + line[10:]
-                                if line[30:40].strip() == '':
-                                    line = line[:30] +  'nan' + line[30:]
-                                if line[50:60].strip() == '':
-                                    line = line[:50] +  'nan' + line[50:]
-                                if line[70:80].strip() == '':
-                                    line = line[:70] +  'nan' + line[70:]
-
-
-                            if i == 7 and line.lower().count('e') < 2 and 'E' not in sys_PRN:
-                                if line[10:20].strip() == '':
-                                    line = line[:10] +  'nan' + line[10:]
-                                if line[30:40].strip() == '':
-                                    line = line[:30] +  'nan' + line[30:]
-
-                            if i == 7 and line.lower().count('e') < 1 and 'E' in sys_PRN: #only one object in last line for Galileo
-                                if line[10:20].strip() == '':
-                                    line = line[:10] +  'nan' + line[10:]
-
-                            if i == 7 and 'E' in sys_PRN: #only one object in last line for Galileo, but add nan to get 36 in total
-                                line = line + 'nan'
-
-
-                            nl = [el for el in line.split(" ") if el != ""]
-                            block_arr = np.append(block_arr,np.array([nl]))
-                            block_arr = block_arr.reshape(1,len(block_arr))
-
-                ## -- Collecting all data into common variable
-                if block_arr.shape[1] > 36:
-                    block_arr = block_arr[:,0:36]
-                try:
-                    if np.size(block_arr) != 0 and 'R' not in sys_PRN:
-                        data  = np.concatenate([data , block_arr], axis=0)
-
-                    elif np.size(block_arr) != 0 and 'R' in sys_PRN:
-                        GLO_dum = np.zeros([1,np.size(data,axis=1) - np.size(block_arr,axis=1)])
-                        block_arr = np.append(block_arr,GLO_dum) # adding emtpy columns to match size of other systems
-                        block_arr = block_arr.reshape(1,len(block_arr))
-                        data  = np.concatenate([data , block_arr], axis=0)
-                    else:
-                        data  = np.delete(data , (0), axis=0)
-                except:
-                    print("ERROR! Sure this is a RINEX v.3 navigation file?")
-                    break
-
-                current_epoch += 1
-                if len(nav_lines) >=10 and np.mod(current_epoch, n_update_break) == 0:  # Update progress bar every n_update_break epochs
-                    pbar.update(10)
-                elif len(nav_lines) < 10 and np.mod(current_epoch, n_update_break) == 0:
-                    pbar.update(1)
-
-        # Remove first row if contains only zeros
-        if np.all(data[0,:] == '0.0'):
-            data  = np.delete(data , (0), axis=0)
-
-        if np.any(np.char.startswith(data[:, 0], 'R')):
-            self.glo_fcn = self.extract_glonass_fcn_from_rinex_nav(data)
-
-        n_eph = len(data)
+    blocks = _filter_on_time(raw_blocks, data_rate)
+    if not blocks:
+        empty = np.empty((0, _N_COLS), dtype=object)
         if dataframe:
-            data = DataFrame(data)
-            data_columns = list(data.columns)
-            data_columns.pop(0) # Removing index that contains PRN nr ex 'G01'
-            data[data_columns] = data[data_columns].astype(float) # Change the other values to float
+            empty = DataFrame(empty)
+        return RinexNavData(ephemerides=empty, header=header, nepochs=0, glonass_fcn=None)
 
+    bar_fmt = "{desc}: {percentage:3.0f}%|{bar}| ({n_fmt}/{total_fmt})"
+    n_blocks = len(blocks)
+    n_steps = min(100, n_blocks)
+    step = max(1, n_blocks // n_steps)
 
-        # Create a dictinary for the data
-        nav_data = {'ephemerides':data,
-                    'header':header,
-                    'nepohs': n_eph,
-                    'glonass_fcn': self.glo_fcn}
+    rows: list[ndarray] = []
+    with tqdm(total=n_steps, desc="Rinex navigation file is being read", bar_format=bar_fmt) as pbar:
+        for i, block in enumerate(blocks):
+            sys_char = block[0].strip()[0]
+            rows.append(_parse_v3_block(block, is_glonass=(sys_char == "R")))
+            if (i + 1) % step == 0:
+                pbar.update(1)
+        pbar.update(n_steps - pbar.n)
 
-        return nav_data
+    data = np.vstack(rows).astype(str)
+    glo_fcn = _extract_glonass_fcn(data)
+    n_eph = len(data)
 
+    if dataframe:
+        data = DataFrame(data)
+        float_cols = list(data.columns[1:])
+        data[float_cols] = data[float_cols].astype(float)
 
-
-
-
-if __name__=="__main__":
-    # brod1 = r"C:\Users\perhe\OneDrive\Documents\Python_skript\GNSS_repo\TestData\NavigationFiles\BRDC00IGS_R_20220010000_01D_MN.rnx"
-    # data = Rinex_v3_Reader().read_rinex_nav(brod1, dataframe=True, data_rate=60)
-    pass
+    return RinexNavData(ephemerides=data, header=header, nepochs=n_eph, glonass_fcn=glo_fcn)

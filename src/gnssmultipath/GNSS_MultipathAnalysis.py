@@ -326,16 +326,37 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
     # ── Read RINEX observation file ───────────────────────────────────────────
     desiredObsCodes = ["C", "L", "S"] if include_SNR else ["C", "L"]
 
-    [GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems,
-     obsCodes, approxPosition, max_sat, tInterval, markerName, rinexVersion, recType,
-     timeSystem, leapSec, gnssType, rinexProgr, rinexDate, antDelta, tFirstObs, tLastObs,
-     clockOffsetsON, GLO_Slot2ChannelMap, success] = \
-        readRinexObs(rinObsFilename, readSS=1, readLLI=1,
+    rinex_data = readRinexObs(rinObsFilename, readSS=1, readLLI=1,
                      includeAllGNSSsystems=includeAllGNSSsystems,
                      includeAllObsCodes=0,
                      desiredGNSSsystems=desiredGNSSsystems,
                      desiredObsCodes=desiredObsCodes,
                      desiredObsBands=list(range(1, 10)))
+    GNSS_obs = rinex_data.GNSS_obs
+    GNSS_LLI = rinex_data.GNSS_LLI
+    GNSS_SS = rinex_data.GNSS_SS
+    GNSS_SVs = rinex_data.GNSS_SVs
+    time_epochs = rinex_data.time_epochs
+    nepochs = rinex_data.nepochs
+    GNSSsystems = rinex_data.GNSSsystems
+    obsCodes = rinex_data.obsCodes
+    approxPosition = rinex_data.approxPosition
+    max_sat = rinex_data.max_sat
+    tInterval = rinex_data.tInterval
+    markerName = rinex_data.markerName
+    rinexVersion = rinex_data.rinexVersion
+    recType = rinex_data.recType
+    timeSystem = rinex_data.timeSystem
+    leapSec = rinex_data.leapSec
+    gnssType = rinex_data.gnssType
+    rinexProgr = rinex_data.rinexProgr
+    rinexDate = rinex_data.rinexDate
+    antDelta = rinex_data.antDelta
+    tFirstObs = rinex_data.tFirstObs
+    tLastObs = rinex_data.tLastObs
+    clockOffsetsON = rinex_data.clockOffsetsON
+    GLO_Slot2ChannelMap = rinex_data.GLO_Slot2ChannelMap
+    success = rinex_data.success
 
     # ── Compute satellite positions & elevation angles ────────────────────────
     sat_pos = {}

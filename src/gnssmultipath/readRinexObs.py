@@ -11,7 +11,10 @@ E-mail: per.helge.aarnes@gmail.com
 import time
 import os
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Dict, Tuple
+
 import numpy as np
 from tqdm import tqdm
 from gnssmultipath.Geodetic_functions import date2gpstime
@@ -19,38 +22,127 @@ from gnssmultipath.Geodetic_functions import date2gpstime
 
 global tFirstObs
 
-def readRinexObs(filename, readSS=None, readLLI=None, includeAllGNSSsystems=None,includeAllObsCodes=None, \
-                                      desiredGNSSsystems=None, desiredObsCodes=None, desiredObsBands=None):
+
+# ── RINEX observation data container ─────────────────────────────────────────
+
+@dataclass
+class RinexObsData:
+    """Container for parsed RINEX observation data (all versions).
+
+    Consolidates the 25 return values of the legacy ``readRinexObs*``
+    functions into a single, attribute-accessible object.  Backward
+    compatibility is preserved via ``as_tuple()`` which returns the
+    original 25-element tuple in the same order.
     """
-    Function that chooses which reader to use based on the RINEX version in the file header.
 
-    - RINEX v2.xx  -> readRinexObs211
-    - RINEX v3.xx / v4.xx  -> readRinexObs304
+    # Observation data
+    GNSS_obs:  Dict[str, Any] = field(default_factory=dict)
+    GNSS_LLI:  Any = np.nan
+    GNSS_SS:   Any = np.nan
+    GNSS_SVs:  Any = np.nan
+    time_epochs: Any = np.nan
+    nepochs: int = 0
+    GNSSsystems: Dict = field(default_factory=dict)
+    obsCodes: Dict = field(default_factory=dict)
 
-    RINEX v4 observation files share the same record format as v3, so
-    the v3.04 reader is used for both.
+    # Receiver / site metadata
+    approxPosition: Any = np.nan
+    max_sat: Any = np.nan
+    tInterval: float = np.nan
+    markerName: str = ''
+
+    # RINEX header metadata
+    rinexVersion: str = ''
+    recType: str = ''
+    timeSystem: str = ''
+    leapSec: float = np.nan
+    gnssType: str = ''
+    rinexProgr: str = ''
+    rinexDate: str = ''
+    antDelta: Any = np.nan
+
+    # Time bounds
+    tFirstObs: Any = np.nan
+    tLastObs: Any = np.nan
+
+    # Flags and maps
+    clockOffsetsON: int = 0
+    GLO_Slot2ChannelMap: Any = np.nan
+    success: int = 1
+
+    # ── Tuple interop ────────────────────────────────────────────────────
+
+    _FIELDS_ORDERED = (
+        'GNSS_obs', 'GNSS_LLI', 'GNSS_SS', 'GNSS_SVs', 'time_epochs',
+        'nepochs', 'GNSSsystems', 'obsCodes', 'approxPosition', 'max_sat',
+        'tInterval', 'markerName', 'rinexVersion', 'recType', 'timeSystem',
+        'leapSec', 'gnssType', 'rinexProgr', 'rinexDate', 'antDelta',
+        'tFirstObs', 'tLastObs', 'clockOffsetsON', 'GLO_Slot2ChannelMap',
+        'success',
+    )
+
+    def as_tuple(self) -> Tuple:
+        """Return the legacy 25-element tuple (same order as old API)."""
+        return tuple(getattr(self, f) for f in self._FIELDS_ORDERED)
+
+    def __iter__(self):
+        """Allow ``a, b, ... = readRinexObs(...)`` unpacking."""
+        return iter(self.as_tuple())
+
+    def __len__(self):
+        return len(self._FIELDS_ORDERED)
+
+    def __getitem__(self, idx):
+        return self.as_tuple()[idx]
+
+    @classmethod
+    def from_tuple(cls, values: Tuple) -> 'RinexObsData':
+        """Construct from an existing 25-element tuple."""
+        return cls(**dict(zip(cls._FIELDS_ORDERED, values)))
+
+
+# ── Public dispatcher ────────────────────────────────────────────────────────
+
+def readRinexObs(filename, readSS=None, readLLI=None,
+                 includeAllGNSSsystems=None, includeAllObsCodes=None,
+                 desiredGNSSsystems=None, desiredObsCodes=None,
+                 desiredObsBands=None):
+    """Read a RINEX observation file (v2 / v3 / v4).
+
+    Dispatches to the correct version-specific reader and returns
+    a :class:`RinexObsData` instance.  The object supports tuple
+    unpacking, so existing call-sites that do::
+
+        GNSS_obs, GNSS_LLI, ..., success = readRinexObs(file)
+
+    continue to work unchanged.
     """
-
     if os.stat(filename).st_size == 0:
         raise ValueError('ERROR: This file seems to be empty')
+
     with open(filename, 'r') as fid:
         line = fid.readline().rstrip()
-    rinexVersion = line[0:9].strip()
-    major_version = rinexVersion.split('.')[0]
-    if major_version == '2':
-        GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems,\
-            obsCodes, approxPosition, max_sat, tInterval, markerName, rinexVersion, recType, timeSystem, leapSec, gnssType,\
-            rinexProgr, rinexDate, antDelta, tFirstObs, tLastObs, clockOffsetsON, GLO_Slot2ChannelMap, success=  readRinexObs211(filename, readSS=None, readLLI=None, includeAllGNSSsystems=None,includeAllObsCodes=None, \
-                            desiredGNSSsystems=desiredGNSSsystems, desiredObsCodes=None, desiredObsBands=None) ## WHEN A SOUTION IS FOUND ON desiredGNSSsystems, =None must be removed.
-    else:
-        GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems,\
-            obsCodes, approxPosition, max_sat, tInterval, markerName, rinexVersion, recType, timeSystem, leapSec, gnssType,\
-            rinexProgr, rinexDate, antDelta, tFirstObs, tLastObs, clockOffsetsON, GLO_Slot2ChannelMap, success =  readRinexObs304(filename, readSS, readLLI, includeAllGNSSsystems,includeAllObsCodes, \
-                                desiredGNSSsystems, desiredObsCodes, desiredObsBands)
 
-    return GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems,\
-        obsCodes, approxPosition, max_sat, tInterval, markerName, rinexVersion, recType, timeSystem, leapSec, gnssType,\
-        rinexProgr, rinexDate, antDelta, tFirstObs, tLastObs, clockOffsetsON, GLO_Slot2ChannelMap, success
+    major_version = line[0:9].strip().split('.')[0]
+
+    if major_version == '2':
+        result = readRinexObs211(
+            filename, readSS=None, readLLI=None,
+            includeAllGNSSsystems=None, includeAllObsCodes=None,
+            desiredGNSSsystems=desiredGNSSsystems,
+            desiredObsCodes=None, desiredObsBands=None,
+        )
+    else:
+        result = readRinexObs304(
+            filename, readSS, readLLI,
+            includeAllGNSSsystems, includeAllObsCodes,
+            desiredGNSSsystems, desiredObsCodes, desiredObsBands,
+        )
+
+    if isinstance(result, RinexObsData):
+        return result
+    # Legacy reader still returns a raw tuple — wrap it
+    return RinexObsData.from_tuple(result)
 
 
 

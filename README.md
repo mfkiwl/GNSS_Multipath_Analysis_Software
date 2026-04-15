@@ -382,13 +382,13 @@ GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems, \
         readRinexObs(rinObs_file)
 ```
 
-### Read a RINEX navigation file (v3 or v4)
+### Read a RINEX navigation file (v2, v3, or v4)
 ```python
-from gnssmultipath import Rinex_v3_Reader
+from gnssmultipath import RinexNav
 
-# Works with both RINEX v3.xx and v4.xx navigation files
+# Works with RINEX v2, v3, and v4 navigation files
 rinNav_file = 'BRDC00IGS_R_20220010000_01D_MN.rnx'
-navdata = Rinex_v3_Reader().read_rinex_nav(rinNav_file, data_rate=60)
+navdata = RinexNav.read_nav(rinNav_file, data_rate=60)
 ```
 
 ### Read in the results from an uncompressed Pickle file

@@ -38,9 +38,9 @@ class PreciseSatCoords:
     def __init__(self, sp3_file: str, rinex_obs_file: str=None, time_epochs: np.ndarray=None, GNSSsystems: Dict=None):
 
         if rinex_obs_file:
-            _,_, _, _, self.time_epochs, _, self.GNSSsystems,\
-            _, _, _, _, _, _, _, _, _, _,\
-            _, _, _, _, _, _, _, _ = readRinexObs(rinex_obs_file)
+            obs_data = readRinexObs(rinex_obs_file)
+            self.time_epochs = obs_data.time_epochs
+            self.GNSSsystems = obs_data.GNSSsystems
         else:
             self.time_epochs = time_epochs
             self.GNSSsystems = GNSSsystems

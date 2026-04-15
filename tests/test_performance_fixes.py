@@ -256,9 +256,8 @@ class TestSP3InterpolatorDataFrame:
         sp3_df = reader.read()
         metadata = reader.get_metadata()
 
-        _, _, _, _, time_epochs, _, _, \
-        _, _, _, _, _, _, _, _, _, _, \
-        _, _, _, _, _, _, _, _ = readRinexObs(rinObs_path)
+        obs_data = readRinexObs(rinObs_path)
+        time_epochs = obs_data.time_epochs
 
         return sp3_df, metadata["epoch_interval_sec"], time_epochs
 
