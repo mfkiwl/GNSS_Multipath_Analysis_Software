@@ -61,13 +61,86 @@ _FORTRAN_EXP = re.compile(r"(?<=[0-9.])[Dd](?=[+-]?\d)")
 
 
 # ---------------------------------------------------------------------------
+# Broadcast-orbit column definitions (per GNSS system)
+# ---------------------------------------------------------------------------
+
+
+class BroadcastColumns:
+    """Column-name definitions for RINEX broadcast ephemeris parameters.
+
+    Each GNSS system defines a tuple of column names that matches the order
+    in the ``(n, 36)`` ephemeris array produced by :meth:`RinexNav.read_nav`.
+    Inherit this class to gain named access to per-system DataFrames.
+
+    Column layout
+    -------------
+    * ``0``      -- PRN string (e.g. ``'G01'``, ``'R24'``)
+    * ``1-6``    -- Epoch: Year, Month, Day, Hour, Minute, Second
+    * ``7-9``    -- Clock parameters (system-specific names)
+    * ``10-35``  -- Broadcast-orbit parameters (system-specific)
+
+    For **GLONASS**, only columns 0-21 carry meaningful values; the remaining
+    columns are zero-padded to maintain uniform shape.
+    """
+
+    _COMMON = ("PRN", "Year", "Month", "Day", "Hour", "Minute", "Second")
+    _CLOCK = ("af0", "af1", "af2")
+    _CLOCK_GLO = ("TauN", "GammaN", "MessageFrameTime")
+
+    GPS: tuple[str, ...] = _COMMON + _CLOCK + (
+        "IODE", "Crs", "Delta_n", "M0",
+        "Cuc", "e", "Cus", "sqrt_A",
+        "Toe", "Cic", "OMEGA0", "Cis",
+        "i0", "Crc", "omega", "OMEGA_DOT",
+        "IDOT", "L2_codes", "GPS_week", "L2P_flag",
+        "SV_accuracy", "SV_health", "TGD", "IODC",
+        "Transmission_time", "Fit_interval",
+    )
+
+    GLONASS: tuple[str, ...] = _COMMON + _CLOCK_GLO + (
+        "X", "X_vel", "X_acc", "health",
+        "Y", "Y_vel", "Y_acc", "freq_num",
+        "Z", "Z_vel", "Z_acc", "age",
+    )
+
+    GALILEO: tuple[str, ...] = _COMMON + _CLOCK + (
+        "IODnav", "Crs", "Delta_n", "M0",
+        "Cuc", "e", "Cus", "sqrt_A",
+        "Toe", "Cic", "OMEGA0", "Cis",
+        "i0", "Crc", "omega", "OMEGA_DOT",
+        "IDOT", "Data_sources", "GAL_week", "Spare_1",
+        "SISA", "SV_health", "BGD_E5a_E1", "BGD_E5b_E1",
+        "Transmission_time", "Spare_2",
+    )
+
+    BEIDOU: tuple[str, ...] = _COMMON + _CLOCK + (
+        "AODE", "Crs", "Delta_n", "M0",
+        "Cuc", "e", "Cus", "sqrt_A",
+        "Toe", "Cic", "OMEGA0", "Cis",
+        "i0", "Crc", "omega", "OMEGA_DOT",
+        "IDOT", "Spare_1", "BDT_week", "Spare_2",
+        "SV_accuracy", "SatH1", "TGD1", "TGD2",
+        "Transmission_time", "AODC",
+    )
+
+    SYSTEM_COLUMNS: dict[str, tuple[str, ...]] = {
+        "G": GPS,
+        "R": GLONASS,
+        "E": GALILEO,
+        "C": BEIDOU,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Data container
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class RinexNavData:
+class RinexNavData(BroadcastColumns):
     """Container for parsed RINEX navigation data.
+
+    Inherits column-name definitions from :class:`BroadcastColumns`.
 
     Attributes
     ----------
@@ -95,6 +168,56 @@ class RinexNavData:
     header: list = field(default_factory=list)
     nepochs: int = 0
     glonass_fcn: Optional[dict] = None
+
+    # ------------------------------------------------------------------
+    # Per-system named DataFrames
+    # ------------------------------------------------------------------
+
+    def _system_df(self, system: str) -> DataFrame:
+        """Filter ephemerides for one GNSS system and return a named DataFrame.
+
+        Parameters
+        ----------
+        system : str
+            Single-character system identifier (``'G'``, ``'R'``, ``'E'``, ``'C'``).
+        """
+        cols = self.SYSTEM_COLUMNS[system]
+        eph = self.ephemerides
+
+        raw = eph.values if isinstance(eph, DataFrame) else eph
+        if raw.size == 0:
+            return DataFrame(columns=cols)
+
+        prns = raw[:, 0].astype(str)
+        mask = np.char.startswith(prns, system)
+        if not np.any(mask):
+            return DataFrame(columns=cols)
+
+        n = len(cols)
+        subset = DataFrame(raw[mask][:, :n].copy(), columns=cols)
+        float_cols = list(cols[1:])
+        subset[float_cols] = subset[float_cols].astype(float)
+        return subset.reset_index(drop=True)
+
+    @property
+    def gps(self) -> DataFrame:
+        """GPS broadcast ephemerides as a :class:`~pandas.DataFrame` with named columns."""
+        return self._system_df("G")
+
+    @property
+    def glonass(self) -> DataFrame:
+        """GLONASS broadcast ephemerides as a :class:`~pandas.DataFrame` with named columns."""
+        return self._system_df("R")
+
+    @property
+    def galileo(self) -> DataFrame:
+        """Galileo broadcast ephemerides as a :class:`~pandas.DataFrame` with named columns."""
+        return self._system_df("E")
+
+    @property
+    def beidou(self) -> DataFrame:
+        """BeiDou broadcast ephemerides as a :class:`~pandas.DataFrame` with named columns."""
+        return self._system_df("C")
 
 
 # ---------------------------------------------------------------------------
