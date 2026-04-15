@@ -5,6 +5,214 @@ Made by: Per Helge Aarnes
 E-mail: per.helge.aarnes@gmail.com
 """
 import numpy as np
+import pandas as pd
+from dataclasses import dataclass, field
+from typing import List, Dict, Literal, Optional, Tuple, Union
+
+
+@dataclass
+class SP3NavData:
+    """Container for parsed SP3 navigation data.
+
+    Attributes:
+        sat_pos:          Nested dict: sat_pos[system][epoch_idx][PRN] = np.array([[X, Y, Z]])
+        epoch_dates:      np.ndarray of shape (nEpochs, 6) with string date components
+        navGNSSsystems:   List of GNSS system codes ["G", "R", "E", "C"]
+        nEpochs:          Number of position epochs
+        epochInterval:    Interval between epochs in seconds
+        success:          1 if parsing succeeded, 0 otherwise
+    """
+
+    sat_pos: Dict[str, Dict[int, Dict[int, np.ndarray]]] = field(default_factory=dict)
+    epoch_dates: np.ndarray = field(default_factory=lambda: np.empty((0, 6)))
+    navGNSSsystems: List[str] = field(default_factory=lambda: ["G", "R", "E", "C"])
+    nEpochs: int = 0
+    epochInterval: float = 0.0
+    success: int = 1
+
+    def as_tuple(self) -> Tuple:
+        """Return as legacy 6-tuple for backward compatibility."""
+        return (self.sat_pos, self.epoch_dates, self.navGNSSsystems,
+                self.nEpochs, self.epochInterval, self.success)
+
+    def as_dataframe(self) -> pd.DataFrame:
+        """Convert to a pandas DataFrame with columns [Epoch, Satellite, X, Y, Z].
+
+        Each row represents one satellite position at one epoch.
+        Epoch is a string like '2022-01-01 00:00:00', Satellite is e.g. 'G01'.
+        X, Y, Z are in meters.
+        """
+        rows = []
+        for sys_code, epoch_dict in self.sat_pos.items():
+            for epoch_idx, prn_dict in epoch_dict.items():
+                if epoch_idx < len(self.epoch_dates):
+                    parts = self.epoch_dates[epoch_idx]
+                    epoch_str = f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d} {int(parts[3]):02d}:{int(parts[4]):02d}:{int(float(parts[5])):02d}"
+                else:
+                    epoch_str = str(epoch_idx)
+                for prn, coords in prn_dict.items():
+                    rows.append((
+                        epoch_str,
+                        f"{sys_code}{prn:02d}",
+                        coords[0, 0],
+                        coords[0, 1],
+                        coords[0, 2],
+                    ))
+        df = pd.DataFrame(rows, columns=["Epoch", "Satellite", "X", "Y", "Z"])
+        df["Epoch"] = pd.to_datetime(df["Epoch"])
+        return df.sort_values(["Epoch", "Satellite"]).reset_index(drop=True)
+
+
+class SP3NavReader:
+    """Parser for SP3 precise orbit files producing dict-based position output.
+
+    Optimized for speed via bulk line reading, pre-computed satellite lookup
+    table, and minimal per-satellite overhead in the inner loop.
+
+    Example:
+        reader = SP3NavReader("orbit.sp3", desiredGNSSsystems=["G", "E"])
+        data = reader.read()
+        gps_epoch0_prn1 = data.sat_pos["G"][0][1]  # np.array([[X, Y, Z]])
+    """
+
+    _GNSS_SYSTEMS = ["G", "R", "E", "C"]
+    _SYS_TO_INDEX = {"G": 1, "R": 2, "E": 3, "C": 4}
+    _INDEX_TO_SYS = {1: "G", 2: "R", 3: "E", 4: "C"}
+    _SATS_PER_HEADER_LINE = 17
+
+    def __init__(self, filename: str, desiredGNSSsystems: Optional[List[str]] = None,
+                 output_format: Literal["data", "tuple", "dataframe"] = "data"):
+        self.filename = filename
+        self.desiredGNSSsystems = desiredGNSSsystems if desiredGNSSsystems is not None else list(self._GNSS_SYSTEMS)
+        self._desired_set = frozenset(self.desiredGNSSsystems)
+        self.output_format = output_format
+
+    def read(self) -> Union[SP3NavData, Tuple, pd.DataFrame]:
+        """Read the SP3 file and return data in the configured output_format.
+
+        Returns:
+            - SP3NavData   when output_format="data"  (default)
+            - 6-tuple      when output_format="tuple" (legacy)
+            - pd.DataFrame when output_format="dataframe"
+        """
+        try:
+            with open(self.filename, 'r', encoding='utf-8') as fid:
+                lines = fid.readlines()
+        except Exception as exc:
+            raise ValueError('No file selected!') from exc
+
+        data = self._parse(lines)
+        if self.output_format == "tuple":
+            return data.as_tuple()
+        if self.output_format == "dataframe":
+            return data.as_dataframe()
+        return data
+
+    def _parse_header(self, lines: list, n_lines: int):
+        """Parse the SP3 header lines.
+
+        Returns:
+            Tuple of (line_idx, n_sat, n_epochs, epoch_interval, sat_lookup)
+            where sat_lookup maps satellite index -> (sys_code, PRN) for desired systems.
+        """
+        line_idx = 0
+        n_sat = 0
+        n_epochs = 0
+        epoch_interval = 0.0
+        sp3_version = None
+        sat_lookup = {}
+        header_num = 0
+
+        while line_idx < n_lines:
+            line = lines[line_idx]
+            if line and line[0] == '*':
+                break
+            line_idx += 1
+            header_num += 1
+
+            if header_num == 1:
+                sp3_version = line[0:2]
+                if sp3_version not in ('#c', '#d'):
+                    print(f'ERROR(readSP3Nav): SP3 Navigation file is version {sp3_version}, must be version c or d!')
+                    raise ValueError(f'SP3 version {sp3_version} not supported, must be c or d')
+                if line[2] != 'P':
+                    print('ERROR(readSP3Nav): SP3 Navigation file has velocity flag, should have position flag!')
+                    raise ValueError('SP3 file has velocity flag, should have position flag')
+                n_epochs = int(line[32:39])
+
+            elif header_num == 2:
+                epoch_interval = float(line[24:38])
+
+            elif header_num == 3:
+                n_sat = int(line[4:6]) if sp3_version == '#c' else int(line[3:6])
+                sat_line = line[9:60]
+
+                for k in range(n_sat):
+                    sys_char = sat_line[0]
+                    prn_num = int(sat_line[1:3])
+                    sat_line = sat_line[3:]
+
+                    if sys_char in self._desired_set:
+                        sat_lookup[k] = (sys_char, prn_num)
+
+                    if (k + 1) % self._SATS_PER_HEADER_LINE == 0 and k != 0 and (k + 1) < n_sat:
+                        line_idx += 1
+                        sat_line = lines[line_idx][9:60]
+                        header_num += 1
+
+        return line_idx, n_sat, n_epochs, epoch_interval, sat_lookup
+
+    def _parse(self, lines: list) -> SP3NavData:
+        """Parse all lines and return populated SP3NavData."""
+        data = SP3NavData()
+        n_lines = len(lines)
+
+        line_idx, n_sat, n_epochs, epoch_interval, sat_lookup = self._parse_header(lines, n_lines)
+        data.nEpochs = n_epochs
+        data.epochInterval = epoch_interval
+
+        prn_dicts = {s: {} for s in self.desiredGNSSsystems}
+        epoch_dates = []
+
+        for epoch_idx in range(n_epochs):
+            if line_idx >= n_lines:
+                break
+
+            line = lines[line_idx]
+            if not line or line[0] != '*':
+                print(f'The number of epochs given in the headers is not correct!\n'
+                      f'Instead of {n_epochs} epochs, the file contains {epoch_idx} epochs.\n'
+                      f'SP3-file {self.filename} has been read successfully')
+                data.nEpochs = epoch_idx
+                break
+
+            epoch_dates.append(line[3:31].split())
+            line_idx += 1
+
+            obs_by_sys = {s: {} for s in self.desiredGNSSsystems}
+
+            for sat_idx in range(n_sat):
+                if line_idx >= n_lines:
+                    break
+                line = lines[line_idx]
+                line_idx += 1
+
+                entry = sat_lookup.get(sat_idx)
+                if entry is None:
+                    continue
+
+                sys_code, prn = entry
+                parts = line[5:46].split()
+                obs_by_sys[sys_code][prn] = np.array([[float(p) * 1000.0 for p in parts]])
+
+            for sys_code in self.desiredGNSSsystems:
+                if obs_by_sys[sys_code]:
+                    prn_dicts[sys_code][epoch_idx] = obs_by_sys[sys_code]
+
+        data.epoch_dates = np.array(epoch_dates) if epoch_dates else np.empty((0, 6))
+        data.sat_pos = prn_dicts
+        print(f'SP3 Navigation file "{self.filename}" has been read successfully.')
+        return data
 
 
 def readSP3Nav(filename, desiredGNSSsystems=None):
@@ -53,192 +261,5 @@ def readSP3Nav(filename, desiredGNSSsystems=None):
     success:          boolean, 1 if no error occurs, 0 otherwise
 
    """
-
-    #Initialize variables
-    epochInterval = None
-    success = 1
-
-    ## --- Open nav file
-    try:
-        fid = open(filename, 'r', encoding='utf-8')
-    except Exception as exc:
-        success = 0
-        raise ValueError('No file selected!') from exc
-
-    try:
-        return _readSP3Nav_impl(fid, filename, desiredGNSSsystems)
-    finally:
-        fid.close()
-
-
-def _readSP3Nav_impl(fid, filename, desiredGNSSsystems):
-    success = 1
-    epochInterval = None
-
-    if desiredGNSSsystems is None:
-        desiredGNSSsystems = ["G", "R", "E", "C"]
-
-    navGNSSsystems = ["G", "R", "E", "C"] # GNSS system order
-    GNSSsystem_map = dict(zip(navGNSSsystems,[1, 2, 3, 4])) # Mapping GNSS system code to GNSS system index
-    sat_pos = {}
-    # Read header
-    headerLine = 0
-    line = fid.readline().rstrip()
-    # All header lines begin with '*'
-    while '*' not in line[0]:
-        headerLine = headerLine + 1
-        if headerLine == 1:
-            sp3Version = line[0:2]
-            # Control sp3 version
-            if '#c' not in sp3Version and '#d' not in sp3Version:
-                print(f'ERROR(readSP3Nav): SP3 Navigation file is version {sp3Version}, must be version c or d!')
-                success = 0
-                return success
-            # Control that sp3 file is a position file and not a velocity file
-            Pos_Vel_Flag = line[2]
-
-            if 'P' not in Pos_Vel_Flag:
-                print('ERROR(readSP3Nav): SP3 Navigation file is has velocity flag, should have position flag!')
-                success = 0
-                return success
-
-            #Store coordinate system and amount of epochs
-            CoordSys = line[46:51]
-            nEpochs = int(line[32:39])
-
-        if headerLine == 2:
-            # Store GPS-week, "time-of-week" and epoch interval[seconds]
-            GPS_Week = int(line[3:7])
-            tow      = float(line[8:23])
-            epochInterval = float(line[24:38])
-
-
-        if headerLine == 3:
-            #initialize list for storing indices of satellites to be excluded
-            RemovedSatIndex = []
-            if '#c' in sp3Version:
-                nSat = int(line[4:6])
-            else:
-                nSat = int(line[3:6])
-
-            line = line[9:60] # Remove beginning of line
-            # Initialize array for storing the order of satellites in the SP3 file (ie. what PRN and GNSS system index)
-            GNSSsystemIndexOrder = []
-            PRNOrder = []
-            # Keep reading lines until all satellite IDs have been read
-            for k in range(0,nSat):
-                # Control that current satellite is among desired systems
-                if line[0] in desiredGNSSsystems:
-                    ## -- Get GNSSsystemIndex from map container
-                    GNSSsystemIndex = GNSSsystem_map[line[0]]
-                    #Get PRN number/slot number
-                    PRN = int(line[1:3])
-                    #remove satellite that has been read from line
-                    line = line[3::]
-                    #Store GNSSsystemIndex and PRN in satellite order arrays
-                    GNSSsystemIndexOrder.append(GNSSsystemIndex)
-                    PRNOrder.append(PRN)
-                    #if current satellite ID was last of a line, read next line
-                    #and increment number of headerlines
-                    if np.mod(k+1,17)==0 and k != 0:
-                        line = fid.readline().rstrip()
-                        line = line[9:60]
-                        headerLine = headerLine + 1
-                #If current satellite ID is not among desired GNSS systems,
-                #append its index to the array of undesired satellites
-                else:
-                    RemovedSatIndex.append(k)
-                    GNSSsystemIndexOrder.append(np.nan)
-                    PRNOrder.append(np.nan)
-                    #if current satellite ID was last of a line, read next line
-                    #and increment number of headerlines
-                    if np.mod(k+1,17)==0 and k != 0:
-                        line = fid.readline().rstrip()
-                        line = line[9:60]
-                        headerLine = headerLine + 1
-        # Read next line
-        line = fid.readline().rstrip()
-
-    # Initialize matrix for epoch dates
-    epoch_dates = []
-    sys_dict = {}
-    PRN_dict_GPS = {}
-    PRN_dict_Glonass = {}
-    PRN_dict_Galileo = {}
-    PRN_dict_BeiDou = {}
-
-    # Read satellite positions of every epoch
-    ini_sys = list(GNSSsystem_map.keys())[0]
-    for k in range(0,nEpochs):
-        #Store date of current epoch
-        epochs = line[3:31].split(" ")
-        epochs = [x for x in epochs if x != "" ] # removing ''
-        ## -- Make a check if there's a new line. (if the header is not giving the correct nepochs)
-        if epochs == []:
-            print(f'The number of epochs given in the headers is not correct!\nInstead of {str(nEpochs)} epochs, the file contains {str(k+1)} epochs.\nSP3-file {filename} has been read successfully')
-            return sat_pos, epoch_dates, navGNSSsystems, nEpochs, epochInterval,success
-        epoch_dates.append(epochs)
-
-        # Store positions of all satellites for the current epoch
-        obs_dict_GPS = {}
-        obs_dict_Glonass = {}
-        obs_dict_Galileo = {}
-        obs_dict_BeiDou = {}
-        for i in range(0,nSat):
-            line = fid.readline().rstrip()
-            #if current satellite is among desired systems, store positions
-            if i not in RemovedSatIndex:
-                #Get PRN and GNSSsystemIndex of current satellite for previously stored order
-                PRN = PRNOrder[i]
-                GNSSsystemIndex = GNSSsystemIndexOrder[i]
-                # Store position of current satellite in the correct location in
-                sys_keys = list(GNSSsystem_map.keys())
-                sys_values = list(GNSSsystem_map.values())
-                sys_inx = sys_values.index(GNSSsystemIndex)
-                sys = sys_keys[sys_inx]
-                obs = line[5:46].split(" ")
-                obs = [float(x)*1000 for x in obs if x != "" ] # multiplying with 1000 to get meters
-                if sys != ini_sys:
-                    ini_sys = sys
-                if sys == 'G':
-                    obs_G = [x for x in obs if x != "" ]
-                    obs_dict_GPS[PRN]  = np.array([obs_G])
-                    PRN_dict_GPS[k] = obs_dict_GPS
-                elif sys =='R':
-                    obs_R = [x for x in obs if x != "" ]
-                    obs_dict_Glonass[PRN]  = np.array([obs_R])
-                    PRN_dict_Glonass[k] = obs_dict_Glonass
-                elif sys =='E':
-                    obs_E = [x for x in obs if x != "" ]
-                    obs_dict_Galileo[PRN]  = np.array([obs_E])
-                    PRN_dict_Galileo[k] = obs_dict_Galileo
-                elif sys =='C':
-                    obs_C = [x for x in obs if x != "" ]
-                    obs_dict_BeiDou[PRN]  = np.array([obs_C])
-                    PRN_dict_BeiDou[k] = obs_dict_BeiDou
-
-            sys_dict['G'] = PRN_dict_GPS
-            sys_dict['R'] = PRN_dict_Glonass
-            sys_dict['E'] = PRN_dict_Galileo
-            sys_dict['C'] = PRN_dict_BeiDou
-            for s in desiredGNSSsystems:
-                sat_pos[s] = sys_dict[s]
-
-        #Get the next line
-        line = fid.readline().rstrip()
-
-    # The next line should be eof. If not, raise a warning
-    try:
-        line = fid.readline().rstrip()
-    except EOFError:
-        print('ERROR(readSP3Nav): End of file was not reached when expected!')
-        success = 0
-        return success
-
-    # Remove NaN values
-    GNSSsystemIndexOrder = [x for x in GNSSsystemIndexOrder if x != 'nan']
-    PRNOrder = [x for x in GNSSsystemIndexOrder if x != 'nan']
-    epoch_dates = np.array(epoch_dates)
-    print(f'SP3 Navigation file "{filename}" has been read successfully.')
-
-    return sat_pos, epoch_dates, navGNSSsystems, nEpochs, epochInterval, success
+    reader = SP3NavReader(filename, desiredGNSSsystems)
+    return reader.read().as_tuple()
