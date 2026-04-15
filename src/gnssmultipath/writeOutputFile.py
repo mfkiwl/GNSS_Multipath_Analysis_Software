@@ -10,11 +10,6 @@ import logging
 from gnssmultipath import __version__
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 _SEP = '=' * 342
 
 _GNSS_BAND_NAME_MAP = {
@@ -35,11 +30,6 @@ _YES_NO = {1: 'Yes', 0: 'No'}
 _LABEL_WIDTH = 50  # column width for label alignment in output file
 
 _GNSS_NAME2CODE_FULL = {'GPS': 'G', 'GLONASS': 'R', 'Galileo': 'E', 'BeiDou': 'C'}
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _safe_int(val):
     """Extract a Python int from a value that may be a numpy scalar."""
@@ -83,11 +73,6 @@ def _check_lli_active(analysisResults, GNSS_Name2Code, nGNSSsystems):
                 if code_struct['LLI_slip_distribution']['n_slips_Tot'] > 0:
                     return True
     return False
-
-
-# ---------------------------------------------------------------------------
-# Section writers
-# ---------------------------------------------------------------------------
 
 def _write_header(fid, analysisResults, GNSSsystems, nGNSSsystems,
                   LLI_Active, includeResultSummary, includeCompactSummary,
@@ -510,11 +495,6 @@ def _write_detailed_sat_table_no_lli(fid, code_struct, nSat, sys_code, is_glonas
             if code_struct['nEstimates_per_sat'][PRN] > 0:
                 _write_detailed_sat_row_no_lli(fid, code_struct, PRN, sys_code, glo_channel=GLO_Slot2ChannelMap[PRN])
                 fid.write('|______|___________|____________|_______________|_________|______________|_______________|_______________|__________|_________________|_________________|_________________|_________________|_________________|_________________|_________________|\n')
-
-
-# ---------------------------------------------------------------------------
-# Public API (unchanged signature)
-# ---------------------------------------------------------------------------
 
 def writeOutputFile(outputFilename, outputDir, analysisResults, includeResultSummary, includeCompactSummary,\
     includeObservationOverview, includeLLIOverview):

@@ -15,10 +15,6 @@ from gnssmultipath.Geodetic_functions import (
     ECEF2enu_batch,
 )
 
-
-# ---------------------------------------------------------------------------
-#  date2gpstime  (scalar)
-# ---------------------------------------------------------------------------
 class TestDate2GpsTime:
     """Tests for the scalar date2gpstime function."""
 
@@ -61,10 +57,6 @@ class TestDate2GpsTime:
         week, tow = date2gpstime(2024, 2, 29, 0, 0, 0)
         assert round(week) == 2303
 
-
-# ---------------------------------------------------------------------------
-#  date2gpstime_vectorized
-# ---------------------------------------------------------------------------
 class TestDate2GpsTimeVectorized:
     """Tests for the vectorized array version of date2gpstime."""
 
@@ -136,10 +128,6 @@ class TestDate2GpsTimeVectorized:
             assert weeks_v[i] == round(w_s), f"Week mismatch at index {i}"
             assert tows_v[i] == round(t_s), f"TOW mismatch at index {i}"
 
-
-# ---------------------------------------------------------------------------
-#  gpstime2date  (scalar)
-# ---------------------------------------------------------------------------
 class TestGpsTime2Date:
     """Tests for the scalar gpstime2date function."""
 
@@ -169,10 +157,6 @@ class TestGpsTime2Date:
         assert int(hour) == 14
         assert int(minute) == 30
 
-
-# ---------------------------------------------------------------------------
-#  ECEF2enu  vs  ECEF2enu_batch
-# ---------------------------------------------------------------------------
 class TestECEF2enu:
     """Tests for ECEF-to-ENU conversion (scalar and batch)."""
 
@@ -209,10 +193,6 @@ class TestECEF2enu:
         assert_allclose(n, [0.0], atol=1e-15)
         assert_allclose(u, [0.0], atol=1e-15)
 
-
-# ---------------------------------------------------------------------------
-#  ECEF2geodb
-# ---------------------------------------------------------------------------
 class TestECEF2geodb:
     """Tests for ECEF to geodetic coordinate conversion (Bowring's method)."""
 

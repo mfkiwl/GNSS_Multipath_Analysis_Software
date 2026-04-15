@@ -28,9 +28,6 @@ from typing import Optional, Union
 
 from gnssmultipath.utils import CDDISDownloader
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
 EMAIL = "your_email@example.com"   # Replace with your email
 OUTPUT_DIR = Path("./downloaded_gnss_data")
 
@@ -295,10 +292,6 @@ def list_remote_directory(
         print(f"    ... and {len(files) - max_display} more")
     return files
 
-
-# ---------------------------------------------------------------------------
-# Main — uncomment the examples you want to run
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("CDDISDownloader - GNSS Data Download Examples")
     print("=" * 60)

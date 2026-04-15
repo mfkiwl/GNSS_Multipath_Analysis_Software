@@ -27,11 +27,6 @@ from gnssmultipath.writeOutputFile import (
 )
 from gnssmultipath.PickleHandler import PickleHandler
 
-
-# ---------------------------------------------------------------------------
-# Helpers for building mock data
-# ---------------------------------------------------------------------------
-
 def _make_slip_distribution(n_tot=0, n_0_10=0, n_10_20=0, n_20_30=0,
                             n_30_40=0, n_40_50=0, n_over50=0, n_NaN=0):
     return {
@@ -176,11 +171,6 @@ def _make_gps_glonass_results(nSat_gps=2, nSat_glo=2, has_lli=False):
     result['ExtraOutputInfo']['GLO_Slot2ChannelMap'] = glo_slot2channel
     return result
 
-
-# ---------------------------------------------------------------------------
-# Tests for helper functions
-# ---------------------------------------------------------------------------
-
 class TestSafeInt:
     def test_plain_int(self):
         assert _safe_int(42) == 42
@@ -228,11 +218,6 @@ class TestCheckLLIActive:
         results = _make_gps_only_results(has_lli=True)
         name2code = {'GPS': 'G'}
         assert _check_lli_active(results, name2code, 1) is True
-
-
-# ---------------------------------------------------------------------------
-# Tests for writeOutputFile
-# ---------------------------------------------------------------------------
 
 class TestWriteOutputFileHeader:
     """Test that the header section is written correctly."""

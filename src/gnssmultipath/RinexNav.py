@@ -35,10 +35,6 @@ from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 # Number of broadcast-orbit data lines per system (excluding the epoch line).
 _ORBIT_LINES: dict[str, int] = {"G": 7, "R": 3, "E": 7, "C": 7}
 
@@ -58,12 +54,6 @@ _N_COLS = 36
 
 # Regex that replaces Fortran-style 'D'/'d' exponent notation with 'E'.
 _FORTRAN_EXP = re.compile(r"(?<=[0-9.])[Dd](?=[+-]?\d)")
-
-
-# ---------------------------------------------------------------------------
-# Broadcast-orbit column definitions (per GNSS system)
-# ---------------------------------------------------------------------------
-
 
 class BroadcastColumns:
     """Column-name definitions for RINEX broadcast ephemeris parameters.
@@ -130,12 +120,6 @@ class BroadcastColumns:
         "C": BEIDOU,
     }
 
-
-# ---------------------------------------------------------------------------
-# Data container
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class RinexNavData(BroadcastColumns):
     """Container for parsed RINEX navigation data.
@@ -169,9 +153,6 @@ class RinexNavData(BroadcastColumns):
     nepochs: int = 0
     glonass_fcn: Optional[dict] = None
 
-    # ------------------------------------------------------------------
-    # Per-system named DataFrames
-    # ------------------------------------------------------------------
 
     def _system_df(self, system: str) -> DataFrame:
         """Filter ephemerides for one GNSS system and return a named DataFrame.
@@ -218,12 +199,6 @@ class RinexNavData(BroadcastColumns):
     def beidou(self) -> DataFrame:
         """BeiDou broadcast ephemerides as a :class:`~pandas.DataFrame` with named columns."""
         return self._system_df("C")
-
-
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
-
 
 def _parse_version(first_line: str) -> int:
     """Return the major RINEX version from the first header line."""
@@ -297,12 +272,6 @@ def _parse_v2_data_line(line: str) -> list[str]:
     line = re.sub(r"([eE][+-]?\d\d)(-)", r"\1 \2", line)
     return line.split()
 
-
-# ---------------------------------------------------------------------------
-# File reading helpers
-# ---------------------------------------------------------------------------
-
-
 def _read_header(filename: str) -> tuple[int, list[str]]:
     """Read header lines and detect RINEX version.
 
@@ -336,11 +305,6 @@ def _read_body_lines(filename: str) -> list[str]:
             elif "END OF HEADER" in line:
                 past_header = True
     return lines
-
-
-# ---------------------------------------------------------------------------
-# Block extraction
-# ---------------------------------------------------------------------------
 
 _V2_EPOCH_RE = re.compile(r"^\s*\d{1,2}\s+\d{2}\s+\d{1,2}\s+\d{1,2}")
 _V3_EPOCH_RE = re.compile(r"^[GREC]\d{2}")
@@ -443,12 +407,6 @@ def _extract_v4_blocks(all_lines: list[str], desired_systems: set[str]) -> list[
 
     return blocks
 
-
-# ---------------------------------------------------------------------------
-# Block -> row parsing
-# ---------------------------------------------------------------------------
-
-
 def _parse_v2_block(block: list[str]) -> ndarray:
     """Parse one v2 8-line block into a ``(1, 36)`` object ndarray."""
     tokens = _parse_v2_epoch_line(block[0])
@@ -478,12 +436,6 @@ def _parse_v3_block(block: list[str], is_glonass: bool) -> ndarray:
     while len(row) < _N_COLS:
         row.append(pad)
     return np.array(row, dtype=object).reshape(1, _N_COLS)
-
-
-# ---------------------------------------------------------------------------
-# Time-based filtering
-# ---------------------------------------------------------------------------
-
 
 def _filter_on_time(blocks: list[list[str]], interval_minutes: float) -> list[list[str]]:
     """Keep at most one ephemeris per satellite per *interval_minutes*.
@@ -517,12 +469,6 @@ def _filter_on_time(blocks: list[list[str]], interval_minutes: float) -> list[li
 
     return filtered
 
-
-# ---------------------------------------------------------------------------
-# GLONASS FCN extraction
-# ---------------------------------------------------------------------------
-
-
 def _extract_glonass_fcn(data: ndarray) -> Optional[dict[int, int]]:
     """Extract GLONASS frequency-channel numbers from the ephemeris array.
 
@@ -536,12 +482,6 @@ def _extract_glonass_fcn(data: ndarray) -> Optional[dict[int, int]]:
     _, idx = np.unique(glo_data[:, 0], return_index=True)
     unique = glo_data[idx]
     return {int(p[1:]): int(float(f)) for p, f in zip(unique[:, 0], unique[:, 17])}
-
-
-# ---------------------------------------------------------------------------
-# Main reader class
-# ---------------------------------------------------------------------------
-
 
 class RinexNav:
     """Unified RINEX navigation-file reader (v2 / v3 / v4).
@@ -590,12 +530,6 @@ class RinexNav:
             dataframe=dataframe,
             data_rate=data_rate,
         )
-
-
-# ---------------------------------------------------------------------------
-# Internal reader implementations
-# ---------------------------------------------------------------------------
-
 
 def _read_v2(filename: str, header: list[str], dataframe: bool = False) -> RinexNavData:
     """Read a RINEX v2 navigation file (GPS only)."""

@@ -145,7 +145,6 @@ def readRinexObs(filename, readSS=None, readLLI=None,
     return RinexObsData.from_tuple(result)
 
 
-
 def readRinexObs304(filename, readSS=None, readLLI=None, includeAllGNSSsystems=None,includeAllObsCodes=None, \
                     desiredGNSSsystems=None, desiredObsCodes=None, desiredObsBands=None):
     """
@@ -768,7 +767,6 @@ def readRinexObs304(filename, readSS=None, readLLI=None, includeAllGNSSsystems=N
         rinexProgr, rinexDate, antDelta, tFirstObs, tLastObs, clockOffsetsON, GLO_Slot2ChannelMap, success
 
 
-
 def rinexFindNEpochs304(filename, tFirstObs, tLastObs, tInterval):
     """
     Function that computes number of epochs in Rinex 3.xx observation file.
@@ -902,7 +900,6 @@ def rinexFindNEpochs304(filename, tFirstObs, tLastObs, tInterval):
         print('INFO(rinexFindNEpochs304): TIME OF LAST OBS has been found and amount of epochs have been computed')
         fid.close()
     return int(nepochs), tLastObs, tInterval, success
-
 
 
 def rinexReadObsFileHeader304(filename, includeAllGNSSsystems, includeAllObsCodes,desiredGNSSsystems,desiredObsCodes, desiredObsBands):
@@ -1272,7 +1269,6 @@ def rinexReadObsFileHeader304(filename, includeAllGNSSsystems, includeAllObsCode
                     timeSystem = "GPS"
 
 
-
         if 'TIME OF LAST OBS' in line:
             line = line[0:60]     #  deletes 'TIME OF LAST OBS'
             line_ = [el for el in line.split(" ") if el != ""]
@@ -1299,7 +1295,6 @@ def rinexReadObsFileHeader304(filename, includeAllGNSSsystems, includeAllObsCode
             tInterval = float(line_.pop(0))
 
 
-
           ## -- This is an optional record!
           # if 'RCV CLOCK OFFS APPL' in line:
           #     if (strtok(line)=='0'):
@@ -1317,7 +1312,6 @@ def rinexReadObsFileHeader304(filename, includeAllGNSSsystems, includeAllObsCode
             line = line[0:60]     #  deletes 'TIME OF LAST OBS'
             line_ = [el for el in line.split(" ") if el != ""]
             leapSec = int(line_.pop(0))
-
 
 
            ## -- store approximate receiver position
@@ -1356,7 +1350,6 @@ def rinexReadObsFileHeader304(filename, includeAllGNSSsystems, includeAllObsCode
             recType = line[20:40]
 
 
-
      # End of Gobbling Header Loop
     for k in np.arange(0,numGNSSsystems):
         # Give info if any of GNSS systems had zero of desired obscodes.
@@ -1383,7 +1376,6 @@ def rinexReadObsFileHeader304(filename, includeAllGNSSsystems, includeAllObsCode
     return success, rinexVersion, gnssType, markerName, recType, antDelta,GNSSsystems,numOfObsCodes, \
     obsCodes, obsCodeIndex,tFirstObs, tLastObs, tInterval,timeSystem, numHeaderLines, clockOffsetsON, \
     rinexProgr, rinexDate,leapSec, approxPosition, GLO_Slot2ChannelMap, eof, fid
-
 
 
 def rinexReadObsBlock304(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readSS, readLLI):
@@ -1583,7 +1575,6 @@ def rinexReadObsBlock304(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readS
                     SS[sat - removed_sat, obs_num]  = newSS
 
 
-
     ## -- Update number og satellites after satellites have been excluded
     numSV = numSV - removed_sat
     ## --Remove empty arrays
@@ -1591,10 +1582,6 @@ def rinexReadObsBlock304(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readS
     idx_keep = len(Obs) -1 -removed_sat + 1 # removing sats
     Obs = Obs[:idx_keep,:]
     return success, Obs,SVlist, numSV, LLI, SS, eof
-
-
-
-
 
 
 def rinexReadObsBlockHead304(fid):
@@ -2275,7 +2262,6 @@ def readRinexObs211(filename, readSS=None, readLLI=None, includeAllGNSSsystems=N
                 print(messages[msg])
 
 
-
         if readLLI:
             print('INFO(readRinexObs211): LLI have been read (if present in observation file)')
         else:
@@ -2308,7 +2294,6 @@ def readRinexObs211(filename, readSS=None, readLLI=None, includeAllGNSSsystems=N
     return GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems,\
         obsCodes, approxPosition, max_sat, tInterval, markerName, rinexVersion, recType, timeSystem, leapSec, gnssType,\
         rinexProgr, rinexDate, antDelta, tFirstObs, tLastObs, clockOffsetsON, GLO_Slot2ChannelMap, success
-
 
 
 def rinexFindNEpochs211(filename, tFirstObs, tLastObs, tInterval):
@@ -2478,7 +2463,6 @@ def find_match_in_file(file_path, pattern):
             file_size -= chunk_size
     # No match was found
     return None
-
 
 
 def find_match_in_file_FWD(file_path, pattern):
@@ -2830,7 +2814,6 @@ def rinexReadObsFileHeader211(filename, includeAllGNSSsystems, includeAllObsCode
                 antDelta = [line_[0],line_[1],line_[2]]
 
 
-
         if '# / TYPES OF OBSERV' in line:
             pattern_ep1 = r"\s*(\d{2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2}\.\d+)\s*"
             pattern_ep2 = r'\s+([A-Z]\d{2})' #pattern for next line in block header
@@ -2908,7 +2891,6 @@ def rinexReadObsFileHeader211(filename, includeAllGNSSsystems, includeAllObsCode
                 numHeaderLines = numHeaderLines + 1
                 line = fid.readline().rstrip()
                 line_ = [el for el in line.split(" ") if el != ""]
-
 
 
         if 'TIME OF FIRST OBS' in line:
@@ -2991,7 +2973,6 @@ def rinexReadObsFileHeader211(filename, includeAllGNSSsystems, includeAllObsCode
             tInterval = float(line_.pop(0))
 
 
-
           ## -- This is an optional record!
           # if 'RCV CLOCK OFFS APPL' in line:
           #     if (strtok(line)=='0'):
@@ -3009,7 +2990,6 @@ def rinexReadObsFileHeader211(filename, includeAllGNSSsystems, includeAllObsCode
             line = line[0:60]     #  deletes 'TIME OF LAST OBS'
             line_ = [el for el in line.split(" ") if el != ""]
             leapSec = int(line_.pop(0))
-
 
 
            ## -- store approximate receiver position
@@ -3047,7 +3027,6 @@ def rinexReadObsFileHeader211(filename, includeAllGNSSsystems, includeAllObsCode
             recType = line[20:40]
 
 
-
      # End of Gobbling Header Loop
     for k in np.arange(1,numGNSSsystems+1):
         # Give info if any of GNSS systems had zero of desired obscodes.
@@ -3070,7 +3049,6 @@ def rinexReadObsFileHeader211(filename, includeAllGNSSsystems, includeAllObsCode
     return success, rinexVersion, gnssType, markerName, recType, antDelta, GNSSsystems, numOfObsCodes, \
     obsCodes, obsCodeIndex,tFirstObs, tLastObs, tInterval,timeSystem, numHeaderLines, clockOffsetsON, \
     rinexProgr, rinexDate,leapSec, approxPosition, GLO_Slot2ChannelMap, eof, fid
-
 
 
 def rinexReadObsBlock211(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readSS, readLLI, SVlist):
@@ -3295,9 +3273,6 @@ def rinexReadObsBlock211(fid, numSV, nObsCodes, GNSSsystems, obsCodeIndex, readS
     idx_keep = len(Obs) -1 -removed_sat + 1 # removing sats
     Obs = Obs[:idx_keep,:]
     return success, Obs, SVlist, numSV, LLI, SS, eof
-
-
-
 
 
 def rinexReadObsBlockHead211(fid):
