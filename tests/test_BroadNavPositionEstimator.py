@@ -22,7 +22,7 @@ sys.path.append(os.path.join(project_path, 'src'))
 
 from gnssmultipath.BroadNavPositionEstimator import BroadNavPositionEstimator
 from gnssmultipath.SatelliteEphemerisToECEF import SatelliteEphemerisToECEF
-from gnssmultipath.readRinexObs import readRinexObs
+from gnssmultipath.readers.readRinexObs import readRinexObs
 
 
 # Test data paths

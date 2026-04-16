@@ -12,8 +12,8 @@ from numpy.testing import assert_almost_equal
 project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(os.path.join(project_path, 'src'))
 
-from gnssmultipath.SP3Reader import SP3Reader
-from gnssmultipath.read_SP3Nav import readSP3Nav
+from gnssmultipath.readers.SP3Reader import SP3Reader
+from gnssmultipath.readers.read_SP3Nav import readSP3Nav
 
 
 

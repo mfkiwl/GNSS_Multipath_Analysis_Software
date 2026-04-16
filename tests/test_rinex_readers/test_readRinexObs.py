@@ -12,7 +12,7 @@ from numpy.testing import assert_almost_equal
 project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(os.path.join(project_path, 'src'))
 
-from gnssmultipath.readRinexObs import (
+from gnssmultipath.readers.readRinexObs import (
     readRinexObs,
     readRinexObs304,
     rinexReadObsFileHeader304,

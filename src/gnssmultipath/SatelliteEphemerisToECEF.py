@@ -11,7 +11,7 @@ import numpy as np
 from numpy import ndarray
 from tqdm import tqdm
 from gnssmultipath.Geodetic_functions import date2gpstime_vectorized, get_leap_seconds, gpstime2date_arrays, ECEF2enu, ECEF2enu_batch, ECEF2geodb
-from gnssmultipath.RinexNav import RinexNav
+from gnssmultipath.readers.RinexNav import RinexNav
 
 
 

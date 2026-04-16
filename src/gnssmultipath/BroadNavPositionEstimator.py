@@ -4,8 +4,8 @@ import numpy as np
 from typing import Literal
 from gnssmultipath.Geodetic_functions import date2gpstime, date2gpstime_vectorized
 from gnssmultipath.SatelliteEphemerisToECEF import SatelliteEphemerisToECEF, Kepler2ECEF
-from gnssmultipath.readRinexObs import readRinexObs
-from gnssmultipath.StatisticalAnalysis import StatisticalAnalysis
+from gnssmultipath.readers.readRinexObs import readRinexObs
+from gnssmultipath.utils.StatisticalAnalysis import StatisticalAnalysis
 from typing import Tuple, Dict, Optional, Union
 
 

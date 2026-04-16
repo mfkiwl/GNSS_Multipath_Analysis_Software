@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from typing import Literal, Tuple
-from gnssmultipath import PickleHandler
-from gnssmultipath.readRinexObs import readRinexObs
-from gnssmultipath.SP3Reader import SP3Reader
+from gnssmultipath.utils.PickleHandler import PickleHandler
+from gnssmultipath.readers.readRinexObs import readRinexObs
+from gnssmultipath.readers.SP3Reader import SP3Reader
 from gnssmultipath.SatelliteEphemerisToECEF import SatelliteEphemerisToECEF, Kepler2ECEF
 from gnssmultipath.Geodetic_functions import date2gpstime, date2gpstime_vectorized, gpstime2date_arrays, gpstime2date_arrays_with_microsec
 from tqdm import tqdm

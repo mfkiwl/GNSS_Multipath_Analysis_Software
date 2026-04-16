@@ -12,18 +12,18 @@ import time
 from typing import Union, List
 import numpy as np
 from tqdm import tqdm
-from gnssmultipath.readRinexObs import readRinexObs
+from gnssmultipath.readers.readRinexObs import readRinexObs
 from gnssmultipath.Geodetic_functions import gpstime_to_utc_datefmt, gpstime2date
 from gnssmultipath.computeSatElevAzimuth_fromNav import computeSatElevAzimuth_fromNav
 from gnssmultipath.signalAnalysis import signalAnalysis
 from gnssmultipath.detectClockJumps import detectClockJumps
-from gnssmultipath.writeOutputFile import writeOutputFile
+from gnssmultipath.utils.writeOutputFile import writeOutputFile
 from gnssmultipath.createCSVfile import createCSVfile
-from gnssmultipath.make_polarplot import make_polarplot, make_skyplot, make_polarplot_SNR, plot_SNR_wrt_elev
-from gnssmultipath.make_polarplot_dont_use_TEX import make_polarplot_dont_use_TEX, make_skyplot_dont_use_TEX, make_polarplot_SNR_dont_use_TEX, plot_SNR_wrt_elev_dont_use_TEX
-from gnssmultipath.plotResults import plotResults, plotResults_dont_use_TEX, make_barplot, make_barplot_dont_use_TEX
-from gnssmultipath.SkyPlotSummary import make_skyplot_summary
-from gnssmultipath.PickleHandler import PickleHandler
+from gnssmultipath.plot.make_polarplot import make_polarplot, make_skyplot, make_polarplot_SNR, plot_SNR_wrt_elev
+from gnssmultipath.plot.make_polarplot_dont_use_TEX import make_polarplot_dont_use_TEX, make_skyplot_dont_use_TEX, make_polarplot_SNR_dont_use_TEX, plot_SNR_wrt_elev_dont_use_TEX
+from gnssmultipath.plot.plotResults import plotResults, plotResults_dont_use_TEX, make_barplot, make_barplot_dont_use_TEX
+from gnssmultipath.plot.SkyPlotSummary import make_skyplot_summary
+from gnssmultipath.utils.PickleHandler import PickleHandler
 from gnssmultipath.PreciseSatCoords import PreciseSatCoords
 from gnssmultipath.SP3PositionEstimator import SP3PositionEstimator
 

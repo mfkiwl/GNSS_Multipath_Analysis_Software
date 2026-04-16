@@ -22,7 +22,7 @@ sys.path.append(os.path.join(project_path, 'src'))
 
 from gnssmultipath.Geodetic_functions import ECEF2enu, ECEF2enu_batch, ECEF2geodb
 from gnssmultipath.SP3Interpolator import SP3Interpolator
-from gnssmultipath.SP3Reader import SP3Reader
+from gnssmultipath.readers.SP3Reader import SP3Reader
 
 
 # ── Receiver at OPEC (Norway) ──────────────────────────────────────────
@@ -251,7 +251,7 @@ class TestSP3InterpolatorDataFrame:
     @pytest.fixture(scope="class")
     def sp3_setup(self):
         """Read SP3 and RINEX obs data once for all tests."""
-        from gnssmultipath.readRinexObs import readRinexObs
+        from gnssmultipath.readers.readRinexObs import readRinexObs
         reader = SP3Reader(sp3_path, coords_in_meter=True, desiredGNSSsystems=["G", "E"])
         sp3_df = reader.read()
         metadata = reader.get_metadata()

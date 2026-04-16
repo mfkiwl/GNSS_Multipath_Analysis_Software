@@ -17,7 +17,7 @@ import numpy as np
 project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(project_path, 'src'))
 
-from gnssmultipath.writeOutputFile import (
+from gnssmultipath.utils.writeOutputFile import (
     writeOutputFile,
     _safe_int,
     _slip_bins,
@@ -25,7 +25,7 @@ from gnssmultipath.writeOutputFile import (
     _check_lli_active,
     _SEP,
 )
-from gnssmultipath.PickleHandler import PickleHandler
+from gnssmultipath.utils.PickleHandler import PickleHandler
 
 def _make_slip_distribution(n_tot=0, n_0_10=0, n_10_20=0, n_20_30=0,
                             n_30_40=0, n_40_50=0, n_over50=0, n_NaN=0):

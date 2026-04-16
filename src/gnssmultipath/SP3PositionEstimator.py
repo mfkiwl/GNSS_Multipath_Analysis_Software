@@ -10,10 +10,10 @@ import pandas as pd
 from datetime import timedelta, datetime
 from typing import Literal, Tuple, Dict, Optional, Union
 from gnssmultipath.Geodetic_functions import date2gpstime, date2gpstime_vectorized, compute_satellite_azimut_and_elevation_angle, gpstime2date_arrays_with_microsec
-from gnssmultipath.SP3Reader import SP3Reader
+from gnssmultipath.readers.SP3Reader import SP3Reader
 from gnssmultipath.SP3Interpolator import SP3Interpolator
-from gnssmultipath.readRinexObs import readRinexObs
-from gnssmultipath.StatisticalAnalysis import StatisticalAnalysis
+from gnssmultipath.readers.readRinexObs import readRinexObs
+from gnssmultipath.utils.StatisticalAnalysis import StatisticalAnalysis
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)

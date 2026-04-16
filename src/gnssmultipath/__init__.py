@@ -17,10 +17,10 @@ except PackageNotFoundError:
         __version__ = "unknown"
 
 from .GNSS_MultipathAnalysis import GNSS_MultipathAnalysis
-from .readRinexObs import readRinexObs, RinexObsData
-from .RinexNav import RinexNav, RinexNavData
-from .PickleHandler import PickleHandler
-from .read_SP3Nav import readSP3Nav
+from .readers.readRinexObs import readRinexObs, RinexObsData
+from .readers.RinexNav import RinexNav, RinexNavData
+from .utils.PickleHandler import PickleHandler
+from .readers.read_SP3Nav import readSP3Nav
 from .Geodetic_functions import *
 from .SatelliteEphemerisToECEF import SatelliteEphemerisToECEF
 from .GNSSPositionEstimator import GNSSPositionEstimator

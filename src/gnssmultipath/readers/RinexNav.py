@@ -13,7 +13,7 @@ Supported message types per system:
 
 Usage::
 
-    from gnssmultipath.RinexNav import RinexNav
+    from gnssmultipath.readers.RinexNav import RinexNav
     nav_data = RinexNav.read_nav("path/to/nav.rnx")
 
 Made by: Per Helge Aarnes
@@ -491,7 +491,7 @@ class RinexNav:
 
     Examples
     --------
-    >>> from gnssmultipath.RinexNav import RinexNav
+    >>> from gnssmultipath.readers.RinexNav import RinexNav
     >>> nav = RinexNav.read_nav("BRDC00IGS_R_20220010000_01D_MN.rnx")
     >>> nav.ephemerides.shape
     (1234, 36)

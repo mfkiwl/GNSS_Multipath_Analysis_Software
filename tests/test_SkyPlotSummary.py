@@ -13,7 +13,7 @@ import pytest
 project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(project_path, 'src'))
 
-from gnssmultipath.SkyPlotSummary import (
+from gnssmultipath.plot.SkyPlotSummary import (
     _collect_multipath,
     _collect_snr,
     _bin_data,

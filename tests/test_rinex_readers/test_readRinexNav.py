@@ -11,7 +11,7 @@ import numpy as np
 project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(os.path.join(project_path, 'src'))
 
-from gnssmultipath.RinexNav import (
+from gnssmultipath.readers.RinexNav import (
     RinexNav, RinexNavData,
     _read_header, _extract_v4_blocks,
     _ORBIT_LINES, _RINEX4_BODY_LEN, _SUPPORTED_V4_MESSAGES,

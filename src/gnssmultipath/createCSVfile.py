@@ -143,7 +143,7 @@ class createCSVfile:
 
 if __name__ =="__main__":
     sys.path.append(r"C:\Users\perhe\OneDrive\Documents\Python_skript\GNSS_repo\src")
-    from gnssmultipath import PickleHandler
+    from gnssmultipath.utils.PickleHandler import PickleHandler
     analysisResults = PickleHandler.read_zstd_pickle(r"C:\Users\perhe\Desktop\CSV_export\analysisResults.pkl")
     outputDir = r"C:\Users\perhe\Desktop\CSV_export\TEST"
     createCSV = createCSVfile(analysisResults, outputDir)

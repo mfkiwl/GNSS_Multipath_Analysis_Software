@@ -23,7 +23,7 @@ sys.path.append(os.path.join(project_path, 'src'))
 
 from gnssmultipath.SP3PositionEstimator import SP3PositionEstimator
 from gnssmultipath.SatelliteEphemerisToECEF import SatelliteEphemerisToECEF
-from gnssmultipath.readRinexObs import readRinexObs
+from gnssmultipath.readers.readRinexObs import readRinexObs
 
 
 # Test data paths

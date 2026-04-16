@@ -4,11 +4,11 @@ from tqdm import tqdm
 import pandas as pd
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict
-from gnssmultipath.readRinexObs import readRinexObs
-from gnssmultipath.SP3Reader import SP3Reader
+from gnssmultipath.readers.readRinexObs import readRinexObs
+from gnssmultipath.readers.SP3Reader import SP3Reader
 from gnssmultipath.SP3Interpolator import SP3Interpolator
 import gnssmultipath.Geodetic_functions as geodf
-from gnssmultipath import PickleHandler
+from gnssmultipath.utils.PickleHandler import PickleHandler
 
 warnings.filterwarnings("ignore")
 
