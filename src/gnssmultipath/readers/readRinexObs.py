@@ -18,6 +18,7 @@ from typing import Any, Dict, Tuple
 import numpy as np
 from tqdm import tqdm
 from gnssmultipath.Geodetic_functions import date2gpstime
+from gnssmultipath.readers.GNSSObservationData import GNSSObservationData
 
 
 global tFirstObs
@@ -99,6 +100,27 @@ class RinexObsData:
     def from_tuple(cls, values: Tuple) -> 'RinexObsData':
         """Construct from an existing 25-element tuple."""
         return cls(**dict(zip(cls._FIELDS_ORDERED, values)))
+
+    @property
+    def observations(self) -> GNSSObservationData:
+        """Pythonic observation accessor.
+
+        Returns an :class:`GNSSObservationData` that provides easy,
+        code-based access to the observations, LLI, and signal strength::
+
+            obs = rinex_data.observations
+            gps_c1c = obs.gps['C1C']        # ndarray [epochs, sats]
+            obs.galileo.phase_codes          # ['L1X', 'L5X', ...]
+        """
+        if not hasattr(self, '_observation_store'):
+            self._observation_store = GNSSObservationData(
+                self.GNSS_obs,
+                self.obsCodes,
+                self.GNSSsystems,
+                self.GNSS_LLI,
+                self.GNSS_SS,
+            )
+        return self._observation_store
 
 
 # ── Public dispatcher ────────────────────────────────────────────────────────
