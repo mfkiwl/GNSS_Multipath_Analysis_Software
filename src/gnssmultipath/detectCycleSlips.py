@@ -1,137 +1,91 @@
+"""
+This moduling is for detecting  cycle slips in the GNSS phase observations.
+
+Made by: Per Helge Aarnes
+E-mail: per.helge.aarnes@gmail.com
+"""
+
 import numpy as np
-def detectCycleSlips(estimates, missing_obs_overview,epoch_first_obs, epoch_last_obs, tInterval, crit_slip_rate):
+
+
+def detectCycleSlips(estimates, missing_obs_overview, epoch_first_obs, epoch_last_obs, tInterval, crit_slip_rate):
     """
-     Function that detects epochs with cycle slips, given test estimates
-     and a critical rate of change
-    --------------------------------------------------------------------------------------------------------------------------
+    Detect epochs with cycle slips based on a critical rate of change
+    and missing-observation flags.
 
-     INPUTS:
-    --------------------------------------------------------------------------------------------------------------------------
-     estimates:            matrix containing estimates from a linear combination
-                           for a specific PRN estimates(epoch, PRN)
+    Parameters
+    ----------
+    estimates : ndarray, shape (nepochs, nPRN+1)
+        Linear-combination estimates per epoch and PRN (column 0 unused).
+    missing_obs_overview : ndarray, same shape as *estimates*
+        1 where a satellite has no estimate at that epoch, 0 otherwise.
+    epoch_first_obs : ndarray, shape (nPRN+1,)
+        Epoch index of first observation per PRN (NaN if none).
+    epoch_last_obs : ndarray, shape (nPRN+1,)
+        Epoch index of last observation per PRN (NaN if none).
+    tInterval : float
+        Observation interval in seconds.
+    crit_slip_rate : float
+        Critical rate of change to flag a cycle slip [m/s].
 
-     missing_obs_overview: matrix of size nepochs x nPRN containing 1 or 0.
-                           1 indicates that the satellite with this PRN has no
-                           estimate at this epoch. There are no 1s before
-                           first observation epoch or after last observation epoch
-                           as lack of estimates are implied here.
-
-                           missing_obs_overview(epoch, PRN)
-
-
-     epoch_first_obs:      epoch of first estimate for the current satellite
-
-     epoch_last_obs:       epoch of last estimate for the current satellite
-
-     tInterval:            observations interval in seconds.
-
-     crit_slip_rate:       critical rate of change of estimate to
-                           indicate an cycle slip. [m/seconds].
-
-    --------------------------------------------------------------------------------------------------------------------------
-
-     OUTPUTS:
-
-     slip_epochs:          array, contains epochs with detected cycle slip
-    --------------------------------------------------------------------------------------------------------------------------
+    Returns
+    -------
+    dict[str, list[int]]
+        Keys "1" … "nPRN", values are sorted epoch indices with detected slips.
     """
+    n_prn = estimates.shape[1] - 1
+    rate_of_change = np.diff(estimates, axis=0) / tInterval
+    exceeds_threshold = np.abs(rate_of_change) > crit_slip_rate
 
-    ## -- Calculate rate of change of estimates of ionospheric delay (time derivative)
-    estimates_rate_of_change = np.diff(estimates,axis=0)/tInterval
+    slip_epochs = {str(prn): [] for prn in range(1, n_prn + 1)}
 
-    ## -- Detect slips for epochs with either estimates_rate_of_change
-    ## higher than critical value, or epochs with missing estimates
-    condition_met = np.abs(estimates_rate_of_change) > crit_slip_rate  # Create a boolean array where True indicates the condition is met
-    slips_from_crit_rate = np.where(condition_met)
+    # Collect epochs where rate of change exceeds the critical value
+    rows, cols = np.where(exceeds_threshold)
+    for col, row in zip(cols, rows):
+        slip_epochs[str(col)].append(row)
 
-
-    slip_epochs = {str(key): [] for key in range(1, estimates.shape[1])}
-    if slips_from_crit_rate[0].size > 0:
-        for key, value in zip(slips_from_crit_rate[1].astype(str).tolist(), slips_from_crit_rate[0]):
-            slip_epochs[key].append(value)
-
-
-    slips_from_missing_obs_curr_sat = []
+    # Merge in epochs flagged as missing observations
     if epoch_first_obs.size > 0:
-        for PRN in np.arange(len(epoch_first_obs)):
-            epoch_first_obs_temp = epoch_first_obs[PRN].astype(int) if not np.isnan(epoch_first_obs[PRN]) else None
-            epoch_last_obs_temp = epoch_last_obs[PRN].astype(int) if not np.isnan(epoch_last_obs[PRN]) else None
-
-            if any(item is None for item in [epoch_first_obs_temp, epoch_last_obs_temp]):
+        for prn in range(len(epoch_first_obs)):
+            if np.isnan(epoch_first_obs[prn]) or np.isnan(epoch_last_obs[prn]):
                 continue
-            else:
-                slips_from_missing_obs_curr_sat = (np.where(missing_obs_overview[epoch_first_obs_temp:epoch_last_obs_temp,PRN] == 1) + epoch_first_obs_temp)[0].tolist()
+            first = int(epoch_first_obs[prn])
+            last = int(epoch_last_obs[prn])
+            missing_epochs = np.where(missing_obs_overview[first:last, prn] == 1)[0] + first
+            if missing_epochs.size > 0:
+                slip_epochs[str(prn)].extend(missing_epochs.tolist())
 
-            slips_from_crit_rate_curr = slip_epochs[str(PRN)]
-            if len(slips_from_missing_obs_curr_sat) != 0:
-                slip_epochs[str(PRN)].extend(list(sorted(set(slips_from_crit_rate_curr + slips_from_missing_obs_curr_sat))))
-            else:
-                slip_epochs[str(PRN)].extend(list(sorted(set(slips_from_missing_obs_curr_sat))))
-
-    # Ensure no duplicates
-    for key, value in slip_epochs.items():
-        slip_epochs[key] = list(sorted(set(value)))
+    # Remove duplicates and sort
+    for key in slip_epochs:
+        slip_epochs[key] = sorted(set(slip_epochs[key]))
 
     return slip_epochs
 
 
-
-
 def orgSlipEpochs(slip_epochs):
     """
-     Function that takes array of epochs with detected cycle slips and for
-     one satellite and organizing them into slip periods
-    --------------------------------------------------------------------------------------------------------------------------
+    Group individual slip epochs into contiguous slip periods.
 
-     INPUTS
+    Parameters
+    ----------
+    slip_epochs : ndarray
+        Sorted epoch indices where cycle slips were detected.
 
-     slip_epochs:          array, contains epochs with detected cycle slip
-    --------------------------------------------------------------------------------------------------------------------------
-
-     OUTPUTS
-
-     slip_periods:         Matrix that contains the start of periods with cycle slips in
-                           the first column and the ends of the same periods in
-                           the second column.
-
-                           cycle_slip_periods(ambiguity_slip_priod, j),
-                           j = 1, ambiguity period start
-                           j = 2, ambiguity period ends
-
-     n_slip_periods:       amount of slip periods for current satellite
-
-    --------------------------------------------------------------------------------------------------------------------------
+    Returns
+    -------
+    slip_periods : ndarray, shape (N, 2) or list
+        Each row is ``[start_epoch, end_epoch]``. Empty list if no slips.
+    n_slip_periods : int
+        Number of slip periods.
     """
+    if len(slip_epochs) == 0:
+        return [], 0
 
-    ## -- If no slips occurs there are no slip periods for this sat.
-    if len(slip_epochs) != 0:
-        # dummy is logical. It will be 1 at indices where the following
-        # slip epoch is NOT the epoch following the current slip epoch.
-        # These will therefor be the indices where slip periods end.
-        # The last slip end is not detected this way and is inserted manually
-        dummy = (np.diff(slip_epochs) != 1) * 1 # multiply with one to get from "False" and "True" to "0" and "1"
-        dummy2 = np.where(dummy==1)
-        slip_period_ends = np.append(slip_epochs[dummy2], np.array([slip_epochs[-1]]))
-        n_slip_periods = np.sum(dummy) + 1
+    gaps = np.diff(slip_epochs) != 1
+    starts = np.concatenate(([slip_epochs[0]], slip_epochs[1:][gaps]))
+    ends = np.concatenate((slip_epochs[:-1][gaps], [slip_epochs[-1]]))
 
-        ## -- Slip_periods = zeros(n_slip_periods,2);
-        slip_periods = np.zeros([n_slip_periods,2])
-        ## -- Store slip ends
-        slip_periods[:,1] = slip_period_ends
-        ## -- Store first slip start manually
-        slip_periods[0,0] = slip_epochs[0]
-
-        ## Insert remaining slip period starts
-        for k in range(1,n_slip_periods):
-            indx = [x+1 for x, val in enumerate(slip_epochs) if val == slip_periods[k-1, 1]]
-            if len(indx) != 0:
-                indx = indx[0]
-                slip_periods[k, 0] = slip_epochs[indx]
-
-    else:
-        slip_periods = []
-        n_slip_periods = 0
-
-    return slip_periods, n_slip_periods
+    slip_periods = np.column_stack((starts, ends)).astype(float)
+    return slip_periods, len(starts)
 
 
