@@ -11,15 +11,20 @@ warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 plt.rcParams['axes.axisbelow'] = True
-rc('font',**{'family':'serif','serif':['Computer Modern Roman']})
-rc('text', usetex=True)
 plt.rc('figure', figsize=(14, 9),dpi = 170)
 
-def make_polarplot(analysisResults, graph_dir):
+
+def _configure_tex(use_tex):
+    if use_tex:
+        rc('font', **{'family': 'serif', 'serif': ['Computer Modern Roman']})
+    rc('text', usetex=use_tex)
+
+def make_polarplot(analysisResults, graph_dir, use_tex=True):
     """
     The function makes a polar plot that shows the multipath effect as a function
     of azimut and elevation angle."
     """
+    _configure_tex(use_tex)
     GNSS_Name2Code =  dict(zip(['GPS', 'GLONASS', 'Galileo', 'BeiDou'], ['G', 'R', 'E', 'C']))
 
     for system in analysisResults['GNSSsystems']:
@@ -99,13 +104,14 @@ def make_polarplot(analysisResults, graph_dir):
                     plt.close()
 
 
-def make_skyplot(azimut_currentSys, elevation_currentSys, GNSSsystemName,graph_dir):
+def make_skyplot(azimut_currentSys, elevation_currentSys, GNSSsystemName, graph_dir, use_tex=True):
     """
     Generates a skyplot for GPS based on azimuth and elevation angles.
     azimuth: list of azimuth angles in degrees
     elevation: list of elevation angles in degrees
     title: title of the skyplot
     """
+    _configure_tex(use_tex)
     GNSS_Name2Code =  dict(zip(['GPS', 'GLONASS', 'Galileo', 'BeiDou'], ['G', 'R', 'E', 'C']))
     sys_code = GNSS_Name2Code[GNSSsystemName]
     num_sat = azimut_currentSys.shape[1]
@@ -146,11 +152,12 @@ def make_skyplot(azimut_currentSys, elevation_currentSys, GNSSsystemName,graph_d
     return
 
 
-def make_polarplot_SNR(analysisResults, GNSS_obs,GNSSsystems, obsCodes, graphDir):
+def make_polarplot_SNR(analysisResults, GNSS_obs, GNSSsystems, obsCodes, graphDir, use_tex=True):
     """
     The function makes a polar plot that shows the Signal to noise ration (SNR) a function
     of azimut and elevation angle."
     """
+    _configure_tex(use_tex)
     SNR_obs = {}
     for sys in GNSS_obs.keys():
         GNSSsystemIndex = [k for k in GNSSsystems if GNSSsystems[k] == sys][0]
@@ -241,11 +248,12 @@ def make_polarplot_SNR(analysisResults, GNSS_obs,GNSSsystems, obsCodes, graphDir
 
 
 
-def plot_SNR_wrt_elev(analysisResults,GNSS_obs, GNSSsystems, obsCodes, graphDir,tInterval):
+def plot_SNR_wrt_elev(analysisResults, GNSS_obs, GNSSsystems, obsCodes, graphDir, tInterval, use_tex=True):
     """
     Funtion that makes a subplot of the Signal to nosie ration (SNR) wrt to
     time and the satellites elevation angle.
     """
+    _configure_tex(use_tex)
     SNR_obs = {}
     for sys in GNSS_obs.keys():
         GNSSsystemIndex = [k for k in GNSSsystems if GNSSsystems[k] == sys][0]
@@ -290,7 +298,7 @@ def plot_SNR_wrt_elev(analysisResults,GNSS_obs, GNSSsystems, obsCodes, graphDir,
             ax[0].set_xlim([0,t[-1]])
             ax[0].set_ylim(0,np.nanmax(SNR)+10)
             ax[0].set_title("Signal to noise ratio (SNR) as funtion of time for \n Signal: %s (%s)" % (range1_code, system), va='bottom',fontsize=22)
-            ax[0].set_xlabel('Time $[h]$',fontsize=18,labelpad=10)
+            ax[0].set_xlabel('Time $[h]$' if use_tex else 'Time [h]',fontsize=18,labelpad=10)
             ax[0].set_ylabel('[dB-Hz]',fontsize=18,labelpad=10)
             ax[0].tick_params(axis='both', labelsize=16)
             legend = ax[0].legend(loc='center right',fontsize=12,bbox_to_anchor=(1.25, 0.5), fancybox=True, shadow=True,ncol=2) # frame = legend.get_frame(); frame.set_facecolor((0.89701,0.79902,0.68137)); frame.set_edgecolor('black') #legend
@@ -302,7 +310,7 @@ def plot_SNR_wrt_elev(analysisResults,GNSS_obs, GNSSsystems, obsCodes, graphDir,
             ax[1].set_xlim([0,90])
             ax[1].set_title("Signal to noise ratio (SNR) as funtion of elevation angle for \n Signal: %s (%s)" % (range1_code, system), va='bottom',fontsize=22)
             ax[1].set_ylim(0,np.nanmax(SNR)+10)
-            ax[1].set_xlabel('Elevation angle $[^{\circ}]$',fontsize=18,labelpad=10)
+            ax[1].set_xlabel('Elevation angle $[^{\circ}]$' if use_tex else 'Elevation angle [degree]',fontsize=18,labelpad=10)
             ax[1].set_ylabel('[dB-Hz]',fontsize=18,labelpad=10)
             ax[1].tick_params(axis='both', labelsize=16)
             for PRN in range(0,num_sat):
@@ -319,5 +327,18 @@ def plot_SNR_wrt_elev(analysisResults,GNSS_obs, GNSSsystems, obsCodes, graphDir,
             filename = 'SNR_' + system + "_" + range1_code + '.pdf'
             fig.savefig(graphDir + "/" + filename, orientation='landscape',bbox_inches='tight')
             plt.close()
+
+
+def make_polarplot_dont_use_TEX(analysisResults, graph_dir):
+    return make_polarplot(analysisResults, graph_dir, use_tex=False)
+
+def make_skyplot_dont_use_TEX(azimut_currentSys, elevation_currentSys, GNSSsystemName, graph_dir):
+    return make_skyplot(azimut_currentSys, elevation_currentSys, GNSSsystemName, graph_dir, use_tex=False)
+
+def make_polarplot_SNR_dont_use_TEX(analysisResults, GNSS_obs, GNSSsystems, obsCodes, graphDir):
+    return make_polarplot_SNR(analysisResults, GNSS_obs, GNSSsystems, obsCodes, graphDir, use_tex=False)
+
+def plot_SNR_wrt_elev_dont_use_TEX(analysisResults, GNSS_obs, GNSSsystems, obsCodes, graphDir, tInterval):
+    return plot_SNR_wrt_elev(analysisResults, GNSS_obs, GNSSsystems, obsCodes, graphDir, tInterval, use_tex=False)
 
 

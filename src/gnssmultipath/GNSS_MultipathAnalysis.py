@@ -20,7 +20,7 @@ from gnssmultipath.detectClockJumps import detectClockJumps
 from gnssmultipath.utils.writeOutputFile import writeOutputFile
 from gnssmultipath.createCSVfile import createCSVfile
 from gnssmultipath.plot.make_polarplot import make_polarplot, make_skyplot, make_polarplot_SNR, plot_SNR_wrt_elev
-from gnssmultipath.plot.make_polarplot_dont_use_TEX import make_polarplot_dont_use_TEX, make_skyplot_dont_use_TEX, make_polarplot_SNR_dont_use_TEX, plot_SNR_wrt_elev_dont_use_TEX
+from gnssmultipath.plot.make_polarplot import make_polarplot_dont_use_TEX, make_skyplot_dont_use_TEX, make_polarplot_SNR_dont_use_TEX, plot_SNR_wrt_elev_dont_use_TEX
 from gnssmultipath.plot.plotResults import plotResults, plotResults_dont_use_TEX, make_barplot, make_barplot_dont_use_TEX
 from gnssmultipath.plot.SkyPlotSummary import make_skyplot_summary
 from gnssmultipath.utils.PickleHandler import PickleHandler
