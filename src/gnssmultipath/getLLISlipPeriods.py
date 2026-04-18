@@ -1,6 +1,9 @@
 import numpy as np
 
-_LLI_SLIP_CODES = [1, 2, 3, 5, 6, 7]
+# Per RINEX 3.0x spec, only LLI bit 0 (value 1) signals loss of lock.
+# Bit 1 (=2) is wavelength factor, bit 2 (=4) is anti-spoofing.
+# Codes that indicate a slip are those with bit 0 set: 1, 3, 5, 7.
+_LLI_SLIP_CODES = [1, 3, 5, 7]
 
 
 def getLLISlipPeriods(LLI_current_phase):

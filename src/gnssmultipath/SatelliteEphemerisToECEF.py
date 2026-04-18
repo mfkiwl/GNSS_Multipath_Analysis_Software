@@ -228,13 +228,16 @@ class Kepler2ECEF:
         n_k = n0 + delta_n   # Corrected mean motion (n_k)
         M_k = M0 + n_k*t_k   # Mean anomaly (M_k) [rad]
 
-        # Calculate eccentric anomaly
+        # Solve Kepler's equation E - e*sin(E) = M_k with Newton-Raphson.
+        # Newton converges in 3-4 iterations even
+        # for higher eccentricities and uses an actual step-size criterion.
         E = M_k.copy()
-        for _ in range(10):
-            E = M_k + e * np.sin(E)
-            dE = np.fmod(E - M_k, 2 * np.pi)
-            mask = abs(dE) < 1.e-12
-            if np.all(mask):
+        for _ in range(15):
+            E_old = E
+            f  = E - e * np.sin(E) - M_k
+            fp = 1.0 - e * np.cos(E)
+            E  = E - f / fp
+            if np.all(np.abs(E - E_old) < 1.0e-12):
                 break
 
         cosv = (np.cos(E) - e)/(1 - e*np.cos(E))

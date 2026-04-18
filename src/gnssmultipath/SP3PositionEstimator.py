@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 c = 299792458  # Speed of light [m/s]
-OMEGA_EARTH = 7.2921159e-5 # Earth's rotational speed in rad/s
+OMEGA_EARTH = 7.2921151467e-5  # Earth's rotational speed [rad/s]
 
 
 

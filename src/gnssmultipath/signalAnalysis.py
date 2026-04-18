@@ -179,7 +179,15 @@ def signalAnalysis(currentGNSSsystem, range1_Code, range2_Code, GNSSsystems, fre
     # Compute slips from LLI in rinex file
     max_sat = len(current_GNSS_obs[1])
     col_idx = ismember(current_obsCodes[currentGNSSsystem], phase1_Code)
-    LLI_current_phase = np.array([current_GNSS_LLI[ep+1][:, col_idx].ravel() for ep in range(nepochs)])
+    if isinstance(col_idx, list):
+        # ismember returns [] when the phase code is not present in the header.
+        # In that case there is no LLI column to read; treat as no LLI slips.
+        n_sat_cols = current_GNSS_LLI[1].shape[0]
+        LLI_current_phase = np.zeros((nepochs, n_sat_cols))
+    else:
+        LLI_current_phase = np.array(
+            [current_GNSS_LLI[ep + 1][:, col_idx].ravel() for ep in range(nepochs)]
+        )
     LLI_slip_periods = getLLISlipPeriods(LLI_current_phase)
 
     # Compute statistics of estimates

@@ -325,12 +325,16 @@ class TestGetLLISlipPeriods:
             assert result[0, 1] == 5
 
     def test_non_consecutive_lli_flags(self):
-        """Non-consecutive LLI flags should form separate periods."""
+        """Non-consecutive LLI flags should form separate periods.
+
+        Per RINEX 3.0x only LLI bit 0 indicates loss of lock, so codes 1, 3,
+        5 and 7 trigger a slip while 2, 4 and 6 do not.
+        """
         nepochs = 20
         nsat = 1
         lli = np.zeros((nepochs, nsat + 1))
         lli[3, 1] = 1
-        lli[10, 1] = 2  # LLI value 2 also triggers
+        lli[10, 1] = 3  # bit 0 set -> loss of lock
         periods = getLLISlipPeriods(lli)
         result = periods[0]
         if isinstance(result, np.ndarray) and result.size > 0:
@@ -340,12 +344,12 @@ class TestGetLLISlipPeriods:
             assert result[1, 0] == 10
             assert result[1, 1] == 10
 
-    def test_lli_values_1_2_3_5_6_7_are_slips(self):
-        """LLI values 1, 2, 3, 5, 6, 7 should all be detected as slips."""
+    def test_lli_loss_of_lock_codes_are_slips(self):
+        """Per RINEX 3.0x, only LLI codes with bit 0 set (1, 3, 5, 7)
+        indicate loss of lock and should be detected as slips."""
         nepochs = 20
         nsat = 1
-        lli_values = [1, 2, 3, 5, 6, 7]
-        for val in lli_values:
+        for val in [1, 3, 5, 7]:
             lli = np.zeros((nepochs, nsat + 1))
             lli[5, 1] = val
             periods = getLLISlipPeriods(lli)
@@ -353,11 +357,11 @@ class TestGetLLISlipPeriods:
             if isinstance(result, np.ndarray) and result.size > 0:
                 assert 5 in result, f"LLI value {val} should be detected"
 
-    def test_lli_value_0_and_4_not_slips(self):
-        """LLI values 0 and 4 should NOT be detected as slips."""
+    def test_lli_non_loss_of_lock_codes_not_slips(self):
+        """LLI codes without bit 0 (0, 2, 4, 6) must not be flagged as slips."""
         nepochs = 20
         nsat = 1
-        for val in [0, 4]:
+        for val in [0, 2, 4, 6]:
             lli = np.zeros((nepochs, nsat + 1))
             lli[5, 1] = val
             periods = getLLISlipPeriods(lli)

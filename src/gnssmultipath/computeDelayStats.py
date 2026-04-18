@@ -172,8 +172,12 @@ def computeDelayStats(ion_delay_phase1, multipath_range1, current_sat_elevation_
 
     mean_multipath_range1 = np.nanmean(multipath_range1,axis=0)              # Compute mean
     overall_mean_multipath_range1 = np.nanmean(mean_multipath_range1,axis=0) # overall mean multipath, excluding NaN values
-    rms_multipath_range1 = np.nanstd(multipath_range1,axis=0, ddof=0)        # RMS multipath of each satellite, excluding NaN
-    average_rms_multipath_range1 = np.nanstd(multipath_range1, ddof=0)       # Average RMS multipath, excluding NaN
+    # RMS = sqrt(mean(x^2)). np.nanstd would subtract the per-column mean and
+    # therefore give a slightly different value (the standard deviation), which
+    # is inconsistent with the variable name and with the elevation-weighted
+    # RMS computed below.
+    rms_multipath_range1 = np.sqrt(np.nanmean(multipath_range1 * multipath_range1, axis=0))
+    average_rms_multipath_range1 = np.sqrt(np.nanmean(multipath_range1 * multipath_range1))
 
     #  Weighted RMS multipath
     weights     = current_sat_elevation_angles.copy()
