@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import re
 from typing import Union, List
 from datetime import datetime
@@ -97,14 +98,25 @@ class SP3Reader:
                 z = float(line[32:46].strip())  # Z coordinate
                 clk = float(line[46:60].strip())  # Clock bias
 
+                # SP3 marks bad/missing satellite positions with exactly
+                # 0.000000 in all three coordinate columns. Without this
+                # check, downstream interpolation would treat the geocenter
+                # as a real satellite position and corrupt the orbit.
+                if x == 0.0 and y == 0.0 and z == 0.0:
+                    x = y = z = np.nan
+
                 # Convert coordinates from kilometers to meters if required
                 if self.coords_in_meter:
                     x *= 1000
                     y *= 1000
                     z *= 1000
 
-                # Convert clock bias to seconds if required and not a placeholder value
-                if self.clock_bias_in_sec and clk != 999999.999999:
+                # Convert clock bias to seconds if required and not a placeholder value.
+                # SP3 uses 999999.999999 as the bad-clock sentinel; tolerate
+                # small floating-point drift around that value.
+                if abs(clk - 999999.999999) < 1e-6:
+                    clk = np.nan
+                elif self.clock_bias_in_sec:
                     clk *= 1e-6
 
                 satellite_data.append([current_epoch, satellite, x, y, z, clk])

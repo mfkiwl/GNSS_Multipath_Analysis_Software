@@ -203,7 +203,13 @@ class SP3NavReader:
 
                 sys_code, prn = entry
                 parts = line[5:46].split()
-                obs_by_sys[sys_code][prn] = np.array([[float(p) * 1000.0 for p in parts]])
+                coords = np.array([[float(p) * 1000.0 for p in parts]])
+                # SP3 marks bad/missing satellite positions with 0.000000 in
+                # all three coordinate columns; replace with NaN so downstream
+                # interpolation rejects rather than passes through (0, 0, 0).
+                if coords.shape[1] >= 3 and np.all(coords[0, :3] == 0.0):
+                    coords[0, :3] = np.nan
+                obs_by_sys[sys_code][prn] = coords
 
             for sys_code in self.desiredGNSSsystems:
                 if obs_by_sys[sys_code]:

@@ -13,6 +13,7 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
 
 ## Table of Contents
 - [Features](#features)
+- [Methodology](#methodology)
 - [Installation](#installation)
   - [Prerequisites](#prerequisites)
   - [Installing LaTeX (optional)](#installing-latex-optional)
@@ -79,6 +80,95 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
     - Standard deviation of the estimated position
 
 
+
+
+
+## Methodology
+
+This section documents the formulas, conventions and configuration choices that
+determine how multipath, ionospheric delay, cycle slips and statistics are
+computed. The intent is to make the numbers in the report files
+unambiguous and reproducible.
+
+### Linear combinations
+
+Let $P_1, P_2$ be code pseudoranges (m) on the two selected frequencies and
+$L_1, L_2$ be the corresponding carrier-phase observations converted to
+metres (i.e. cycles multiplied by the wavelength). Define the squared
+frequency ratio
+
+$$\alpha = \left(\frac{f_1}{f_2}\right)^2.$$
+
+The software uses the standard dual-frequency combinations:
+
+- **Ionospheric delay on the first phase signal**
+
+$$I_{L_1} = \frac{1}{\alpha - 1}\bigl(L_1 - L_2\bigr)$$
+
+- **Code multipath on the first range signal** (Estey-Meertens / TEQC form)
+
+$$M_{P_1} = P_1 - \left(1 + \frac{2}{\alpha - 1}\right) L_1 + \frac{2}{\alpha - 1} L_2$$
+
+Multipath estimates are demeaned per ambiguity arc (between consecutive cycle
+slips) so that the carrier-phase ambiguity drops out and the residual
+represents code multipath plus noise.
+
+### Cycle-slip detection
+
+Two independent linear combinations are differenced epoch-to-epoch to flag
+cycle slips:
+
+- the **code-minus-phase** combination $L_1 - P_1$ (`phaseCodeLimit`),
+- the **geometry-free phase** combination $L_1 - L_2$ (`ionLimit`).
+
+A slip is declared whenever the absolute rate of change of either
+combination exceeds its critical value (m/s). Missing observations within a
+satellite arc are treated as slip boundaries so that a new ambiguity arc is
+started after every data gap.
+
+### LLI (Loss of Lock Indicator)
+
+The RINEX 3.0x specification defines the LLI byte bit-by-bit:
+
+| Bit | Value | Meaning |
+| --- | ----- | --- |
+| 0   | 1     | Lost lock between previous and current observation |
+| 1   | 2     | Half-cycle ambiguity / opposite wavelength factor |
+| 2   | 4     | Observation under anti-spoofing |
+
+Only LLI codes with bit 0 set (1, 3, 5, 7) are interpreted as a loss of
+lock. Codes 2, 4 and 6 are RINEX metadata and do **not** trigger a slip.
+
+### Elevation cutoff and weighting
+
+Observations whose satellite elevation is below `cutoff_elevation_angle`
+(default 10°) are excluded from all statistics, and slip periods that
+straddle low-elevation epochs are removed. Missing elevation values
+(`NaN`) are treated as below the cutoff.
+
+The elevation-weighted multipath RMS uses the weight
+
+$$w(E) = \min\!\bigl(4 \sin^2 E,\ 1\bigr),$$
+
+i.e. linear up to 30° and saturated at 1 for $E \ge 30°$. The
+unweighted per-satellite and overall RMS values are computed as
+$\sqrt{\overline{x^2}}$ (true RMS, not standard deviation).
+
+### Coordinate frames, constants and time systems
+
+- ECEF / WGS-84 is used throughout. Earth rotation rate
+  $\omega_e = 7.2921151467\times10^{-5}\ \text{rad s}^{-1}$ is used for both
+  Kepler propagation (GPS / Galileo / BeiDou) and the Sagnac correction.
+- GLONASS broadcast orbits are integrated with RK4 in PZ-90 with
+  $\mu = 3.9860044\times10^{14}\ \text{m}^3 \text{s}^{-2}$ and
+  $J_2 = 1.0826257\times10^{-3}$.
+- Eccentric anomaly is solved with Newton-Raphson and a
+  step-size convergence test of $10^{-12}$ rad.
+- Supported `TIME OF FIRST OBS` time systems: `GPS`, `GAL`, `BDT`. GLONASS
+  observation files using the `GLO` time system are read but the conversion
+  to GPST (3-hour offset plus leap seconds) is **not** applied; results for
+  `GLO`-tagged files should therefore be interpreted with care.
+- Leap seconds: see `Geodetic_functions.get_leap_seconds`.
 
 
 

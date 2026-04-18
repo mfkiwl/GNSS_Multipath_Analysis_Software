@@ -1356,15 +1356,16 @@ def rinexReadObsFileHeader304(filename, includeAllGNSSsystems, includeAllObsCode
                 slotNumbers = np.append(slotNumbers,slotNumber)
                 channels = np.append(channels,channel)
 
-                # if np.mod(k+1, 8) == 0:
-                if np.mod(k+1, 8) == 0 and k+1 != 24: # add test if  k ==24 to prevnet skip extra line
-                    # line = fgetl(fid); # end of line is reached so read next line
+                # GLONASS SLOT / FRQ # records hold up to 8 satellites per
+                # line. After every 8th entry read the continuation line, but
+                # only if we have not yet consumed the last satellite -- the
+                # previous "k+1 == 24" check assumed exactly 24 satellites and
+                # broke for partial constellations or extended ones.
+                if np.mod(k + 1, 8) == 0 and (k + 1) < nGLOSat:
                     line = fid.readline().rstrip()
                     numHeaderLines = numHeaderLines + 1
-                    line = line[0:60]     #  deletes 'TIME OF LAST OBS'
+                    line = line[0:60]
                     line_ = [el for el in line.split(" ") if el != ""]
-                elif np.mod(k+1, 8) == 0 and k+1 == 24:
-                    break
 
             GLO_Slot2ChannelMap = dict(zip(slotNumbers.astype(int),channels.astype(int)))
 
