@@ -15,7 +15,7 @@ from tqdm import tqdm
 from gnssmultipath.readers.readRinexObs import readRinexObs
 from gnssmultipath.Geodetic_functions import gpstime_to_utc_datefmt, gpstime2date
 from gnssmultipath.computeSatElevAzimuth_fromNav import computeSatElevAzimuth_fromNav
-from gnssmultipath.signalAnalysis import signalAnalysis
+from gnssmultipath.signalAnalysis import SignalAnalyzer
 from gnssmultipath.detectClockJumps import detectClockJumps
 from gnssmultipath.utils.writeOutputFile import writeOutputFile
 from gnssmultipath.utils.createCSVfile import createCSVfile
@@ -576,17 +576,29 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
                             continue
 
                         # Execute the analysis of current combination of observations
-                        currentStats, success = signalAnalysis(
-                            currentGNSSsystem, range1_Code, range2_Code, GNSSsystems,
-                            frequencyOverview, nepochs, tInterval, current_max_sat,
-                            GNSS_SVs[currentGNSSsystem], obsCodes[sys + 1],
-                            GNSS_obs[currentGNSSsystem], GNSS_LLI[currentGNSSsystem],
-                            sat_elevation_angles[sys], phaseCodeLimit, ionLimit,
-                            cutoff_elevation_angle)
+                        stats, success = SignalAnalyzer(
+                            gnss_system=currentGNSSsystem,
+                            range1_code=range1_Code,
+                            range2_code=range2_Code,
+                            gnss_systems=GNSSsystems,
+                            frequency_overview=frequencyOverview,
+                            nepochs=nepochs,
+                            t_interval=tInterval,
+                            max_sat=current_max_sat,
+                            gnss_svs=GNSS_SVs[currentGNSSsystem],
+                            obs_codes=obsCodes[sys + 1],
+                            gnss_obs=GNSS_obs[currentGNSSsystem],
+                            gnss_lli=GNSS_LLI[currentGNSSsystem],
+                            sat_elevation_angles=sat_elevation_angles[sys],
+                            phase_code_limit=phaseCodeLimit,
+                            ion_limit=ionLimit,
+                            cutoff_elevation_angle=cutoff_elevation_angle,
+                        ).run()
 
                         if not success:
                             return success
 
+                        currentStats = stats.to_dict()
                         current_nEstimates = currentStats['nEstimates']
                         if current_nEstimates == 0:
                             logger.warning(

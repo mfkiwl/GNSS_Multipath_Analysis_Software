@@ -17,6 +17,7 @@ except PackageNotFoundError:
         __version__ = "unknown"
 
 from .GNSS_MultipathAnalysis import GNSS_MultipathAnalysis
+from .signalAnalysis import SignalAnalyzer, SignalStats, SlipPeriods
 from .readers.readRinexObs import readRinexObs, RinexObsData
 from .readers.RinexNav import RinexNav, RinexNavData
 from .utils.PickleHandler import PickleHandler
