@@ -132,49 +132,38 @@ def signalAnalysis(currentGNSSsystem, range1_Code, range2_Code, GNSSsystems, fre
     ion_delay_phase1, multipath_range1, range1_slip_periods,ambiguity_slip_periods ,range1_observations, phase1_observations, success = estimateSignalDelays(range1_Code, range2_Code, \
         phase1_Code, phase2_Code, carrier_freq1, carrier_freq2,nepochs, current_max_sat,\
           current_GNSS_SVs, current_obsCodes, current_GNSS_obs, currentGNSSsystem, tInterval, phaseCodeLimit, ionLimit)
-    # Create logical mask for epochs where sat elevation is lower than cutoff or missing
-    cutoff_elevation_mask = current_sat_elevation_angles.copy()
-    cutoff_elevation_mask[cutoff_elevation_mask < cutoff_elevation_angle] = 0
-    cutoff_elevation_mask[cutoff_elevation_mask >= cutoff_elevation_angle] = 1
-    #  Apply satellite elevation cutoff mask to estimates
+
+    if not success:
+        # Always return the same (stats, success) shape so callers can unpack
+        # the result regardless of whether the analysis succeeded.
+        return np.nan, success
+
+    # Build a boolean mask of epochs/satellites where the elevation angle is
+    # at or above the cutoff. NaN elevations (missing data) are treated as
+    # below the cutoff, so any estimate or slip period referring to them is
+    # filtered out together with the low-elevation observations.
+    valid_elevation = np.isfinite(current_sat_elevation_angles) & \
+        (current_sat_elevation_angles >= cutoff_elevation_angle)
+    cutoff_elevation_mask = valid_elevation.astype(float)
+
     ion_delay_phase1 = ion_delay_phase1 * cutoff_elevation_mask
     multipath_range1 = multipath_range1 * cutoff_elevation_mask
     range1_observations = range1_observations * cutoff_elevation_mask
     phase1_observations = phase1_observations * cutoff_elevation_mask
 
-    # Remove estimated slip periods (range_1 slips) if satellite elevation angle was lower than cutoff or missing.
-    for sat in np.arange(0,len(range1_slip_periods)):
-        current_sat_slip_periods = np.array(range1_slip_periods[sat+1]).astype(int)
-        if len(current_sat_slip_periods) > 0:
-            n_slip_periods,_ = current_sat_slip_periods.shape
-            n_slips_removed = 0
-            for slip_period in np.arange(0,n_slip_periods):
-                if cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 0], sat+1] == 0 \
-                    or cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 1], sat+1] == 0:
+    # Drop slip periods whose start or end epoch falls under the elevation
+    # cutoff (vectorized; replaces an O(n^2) np.delete-in-loop pattern).
+    def _filter_slip_periods_by_elevation(slip_periods_dict):
+        for sat in range(len(slip_periods_dict)):
+            periods = np.asarray(slip_periods_dict[sat + 1], dtype=int)
+            if periods.size == 0:
+                continue
+            keep = valid_elevation[periods[:, 0], sat + 1] & \
+                   valid_elevation[periods[:, 1], sat + 1]
+            slip_periods_dict[sat + 1] = periods[keep]
 
-                    current_sat_slip_periods = np.delete(current_sat_slip_periods, slip_period - n_slips_removed, axis=0)
-                    n_slips_removed = n_slips_removed + 1
-
-            range1_slip_periods[sat+1] = current_sat_slip_periods
-
-    ## -- Remove estimated slip periods (both ionspher residuals and code phase) if satellite elevation angle was lower than cutoff or missing.
-    for sat in np.arange(0,len(ambiguity_slip_periods)):
-        current_sat_slip_periods = np.array(ambiguity_slip_periods[sat+1]).astype(int)
-        if len(current_sat_slip_periods) > 0:
-            n_slip_periods,_ = current_sat_slip_periods.shape
-            n_slips_removed = 0
-            for slip_period in np.arange(0,n_slip_periods):
-                if cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 0], sat+1] == 0 \
-                    or cutoff_elevation_mask[current_sat_slip_periods[slip_period - n_slips_removed, 1], sat+1] == 0:
-
-                    current_sat_slip_periods = np.delete(current_sat_slip_periods, slip_period - n_slips_removed, axis=0)
-                    n_slips_removed = n_slips_removed + 1
-
-            ambiguity_slip_periods[sat+1] = current_sat_slip_periods
-
-    if not success:
-        currentStats = np.nan
-        return currentStats
+    _filter_slip_periods_by_elevation(range1_slip_periods)
+    _filter_slip_periods_by_elevation(ambiguity_slip_periods)
 
     # Compute slips from LLI in rinex file
     max_sat = len(current_GNSS_obs[1])

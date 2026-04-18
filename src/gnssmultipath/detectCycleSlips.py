@@ -51,7 +51,9 @@ def detectCycleSlips(estimates, missing_obs_overview, epoch_first_obs, epoch_las
                 continue
             first = int(epoch_first_obs[prn])
             last = int(epoch_last_obs[prn])
-            missing_epochs = np.where(missing_obs_overview[first:last, prn] == 1)[0] + first
+            # Inclusive on both ends so a gap at the satellite's last observed
+            # epoch is still flagged.
+            missing_epochs = np.where(missing_obs_overview[first:last + 1, prn] == 1)[0] + first
             if missing_epochs.size > 0:
                 slip_epochs[str(prn)].extend(missing_epochs.tolist())
 

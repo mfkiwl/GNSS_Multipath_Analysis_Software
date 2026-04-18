@@ -220,38 +220,25 @@ def compute_azimut_elev(X,Y,Z,xm,ym,zm):
     dZ = (Z - zm)
 
     ## -- Transformerer koordinatene over til lokalttoposentrisk system:
-    if isinstance(X, float): # if only float put in, not list or array
-        east,north,up = ECEF2enu(lat,lon,dX,dY,dZ)
-        ## -- Computes the azimut angle and elevation angel for current coordinates (in degrees)
-        if (east > 0 and north < 0) or (east < 0 and north < 0):
-            az = np.rad2deg(arctan(east/north)) + 180
-        elif east < 0 and north > 0:
-            az = np.rad2deg(arctan(east/north)) + 360
-        else:
-            az = np.rad2deg(arctan(east/north))
-        # elev = arcsin(up/(sqrt(east**2 + north**2 + up**2)))*(180/pi)
+    # Use atan2 (via arctan2) for the azimuth so all four quadrants are handled
+    # automatically and the formula is well-defined when north == 0.
+    if isinstance(X, float):
+        east, north, up = ECEF2enu(lat, lon, dX, dY, dZ)
+        az = np.rad2deg(arctan2(east, north)) % 360.0
         elev = np.rad2deg(atanc(up, sqrt(east**2 + north**2)))
-        if not 0 < elev < 90: # if the satellite is below the horizon (elevation angle is below zero)
+        if not 0 < elev < 90:
             elevation_angle = np.nan
     else:
         east = np.array([]); north = np.array([]); up = np.array([])
-        for i in np.arange(0,len(dX)):
-            east_,north_,up_ = ECEF2enu(lat,lon,dX[i],dY[i],dZ[i])
-            east = np.append(east,east_)
-            north = np.append(north,north_)
-            up = np.append(up,up_)
+        for i in np.arange(0, len(dX)):
+            east_, north_, up_ = ECEF2enu(lat, lon, dX[i], dY[i], dZ[i])
+            east = np.append(east, east_)
+            north = np.append(north, north_)
+            up = np.append(up, up_)
 
-        ## -- Computes the azimut angle and elevation angel for list  coordinates (in degrees)
-        az = []; elev = []
-        for p in np.arange(0,len(dX)):
-            # # Kvadrantkorreksjon
-            if (east[p]> 0 and north[p]< 0) or (east[p] < 0 and north[p] < 0):
-                az.append(np.rad2deg(arctan(east[p]/north[p])) + 180)
-            elif east[p] < 0 and north[p] > 0:
-                az.append(np.rad2deg(arctan(east[p]/north[p])) + 360)
-            else:
-                az.append(np.rad2deg(arctan(east[p]/north[p])))
-            elev.append(np.rad2deg(atanc(up[p], sqrt(east[p]**2 + north[p]**2))))
+        az = (np.rad2deg(arctan2(east, north)) % 360.0).tolist()
+        elev = [np.rad2deg(atanc(up[p], sqrt(east[p]**2 + north[p]**2)))
+                for p in range(len(dX))]
 
     return az,elev
 
@@ -275,32 +262,6 @@ def date2gpstime(year,month,day,hour,minute,seconds):
     tow = tow_0 + hour*3600 + minute*60 + seconds
 
     return week, tow
-
-
-def glonass_diff_eq(state, acc):
-    """
-    State is a vector containing x,y,z,vx,vy,vz from navigation message
-    """
-    J2 = 1.0826257e-3       # Second zonal coefficient of spherical harmonic expression.
-    mu = 3.9860044e14       # Gravitational constant [m3/s2]   (product of the mass of the earth and and gravity constant)
-    omega = 7.292115e-5     # Earth rotation rate    [rad/sek]
-    ae = 6378136.0          # Semi major axis PZ-90   [m]
-    r = np.sqrt(state[0]**2 + state[1]**2 + state[2]**2)
-    der_state = np.zeros(6)
-    if r**2 < 0:
-        return der_state
-    a = 1.5 * J2 * mu * (ae**2)/ (r**5)
-    b = 5 * (state[2]**2) / (r**2)
-    c = -mu/(r**3) - a*(1-b)
-
-    der_state[0:3] = state[3:6]
-    der_state[3] = (c + omega**2)*state[0] + 2*omega*state[4] + acc[0]
-    der_state[4] = (c + omega**2)*state[1] - 2*omega*state[3] + acc[1]
-    der_state[5] = (c - 2*a)*state[2] + acc[2]
-    return der_state
-
-
-
 
 
 def gpstime2date(week, tow):
