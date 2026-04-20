@@ -249,7 +249,7 @@ for every estimates with elevation angle $\beta$ is below $30^{\circ}$ and $w =1
 		</p>
     * The Multipath effect plotted wrt time and elevation angle (combined)
 		<p align="center">
-			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2018_1sec/Graphs/GLONASS_C1C_C2P_MP_combined.png?raw=true" width="630"/>
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/GLONASS_C1C_MP_combined.png?raw=true" width="630"/>
 		</p>
     * Barplot showing RMS values for each signal and system
 		<p align="center">
@@ -271,7 +271,23 @@ for every estimates with elevation angle $\beta$ is below $30^{\circ}$ and $w =1
 
     * Polar plot of Signal-To-Noise Ratio (SNR)
 		<p align="center">
-			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2018_1sec/Graphs/SNR_Polar_GPS_S2W.png?raw=true" width="630"/>
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/SNR_Polar_GPS_S2W.png?raw=true" width="630"/>
+		</p>
+    * Azimuth-vs-elevation heatmap of multipath (all systems combined)
+		<p align="center">
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/Summary_Multipath_AzEl.png?raw=true" width="630"/>
+		</p>
+    * Azimuth-vs-elevation heatmap of multipath (per system, e.g. GPS)
+		<p align="center">
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/Summary_Multipath_AzEl_GPS.png?raw=true" width="630"/>
+		</p>
+    * Azimuth-vs-elevation heatmap of C/N₀ (SNR) (all systems combined)
+		<p align="center">
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/Summary_SNR_AzEl.png?raw=true" width="630"/>
+		</p>
+    * Azimuth-vs-elevation heatmap of C/N₀ (SNR) (per system, e.g. GPS)
+		<p align="center">
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/Summary_SNR_AzEl_GPS.png?raw=true" width="630"/>
 		</p>
 9. Exporting the results as a pickle file which easily can be imported into python as a dictionary
 10. The results in form of a report get written to a text file with the same name as the RINEX observation file.
