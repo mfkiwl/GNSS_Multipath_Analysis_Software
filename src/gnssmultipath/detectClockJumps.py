@@ -92,13 +92,14 @@ def detectClockJumps(GNSS_obs, nGNSSsystems, obsCodes, time_epochs, tInterval, G
         if np.all(abs(obsChange[ep,non_zero_columns]) > 2e5):
             code_jump_epochs.append(ep)
 
-    time_diff = np.diff(time_epochs,axis=0)[:,1].reshape(len(np.diff(time_epochs,axis=0)[:,1]),1)
+    # Compute the time difference between consecutive epochs while correctly
+    # handling GPS-week rollovers. time_epochs columns are [week, time-of-week].
+    # The previous implementation indexed a (N, 1) array as [:, 1] which would
+    # raise an IndexError, leaving week rollovers undetected and producing
+    # spurious clock-jump detections.
+    diffs = np.diff(time_epochs, axis=0)
+    time_diff = diffs[:, 1] + 7 * 24 * 3600 * diffs[:, 0]
 
-
-    if np.all(time_diff[:,0] == 0):
-        time_diff = time_diff[:,1]
-
-    # time_jump_epochs = find(abs(time_diff-tInterval)> 1e-4);
     time_jump_epochs = np.argwhere(abs(time_diff - tInterval) > 1e-4)
 
     jump_epochs = np.union1d(time_jump_epochs, code_jump_epochs)

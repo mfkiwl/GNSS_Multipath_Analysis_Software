@@ -1,62 +1,45 @@
-import warnings
-warnings.filterwarnings("ignore")
+import numpy as np
+
+# Per RINEX 3.0x spec, only LLI bit 0 (value 1) signals loss of lock.
+# Bit 1 (=2) is wavelength factor, bit 2 (=4) is anti-spoofing.
+# Codes that indicate a slip are those with bit 0 set: 1, 3, 5, 7.
+_LLI_SLIP_CODES = [1, 3, 5, 7]
+
 
 def getLLISlipPeriods(LLI_current_phase):
     """
-    Function that sorts all ambiguity slips indicated by LLI in RINEX
-    observation file.
+    Group LLI-indicated ambiguity slips from a RINEX observation file into
+    contiguous slip periods per satellite.
 
-     INPUTS:
-     -------
-     LLI_current_phase:        matrix. contains LLI indicators for all epochs
-                               for current GNSS system and phase pbservation,
-                               for all satellites.
+    Parameters
+    ----------
+    LLI_current_phase : ndarray, shape (n_epochs, n_sat + 1)
+        LLI indicators for every epoch and satellite.
+        Column 0 is unused; columns 1 … n_sat hold per-satellite values.
 
-                               LLI_current_phase(epoch, satID)
-
-     OUTPUTS:
-     --------
-     LLI_slip_periods:         dict. One element for each satellite. Each
-                               cell is a matrix. The matrix contains indicated
-                               slip period start epochs in first column, and
-                               end epochs in second column.
+    Returns
+    -------
+    dict[int, ndarray | list]
+        Keys are 0-based satellite indices.  Values are (N, 2) float arrays
+        where each row is ``[start_epoch, end_epoch]``, or an empty list
+        when no slips were detected.
     """
-    import numpy as np
-    _, nSat = LLI_current_phase.shape
-    LLI_slip_periods = {}
+    _, n_cols = LLI_current_phase.shape
+    n_sat = n_cols - 1
+    slip_periods = {}
 
-    # Itterrate through all satellites in current GNSS system
-    for sat in range(0,nSat-1):
-        LLI_current_sat = LLI_current_phase[:, sat+1]
-        ## Get epochs where LLI indicate slip, for current satellite
-        LLI_slips = np.array(ismember2([1, 2, 3, 5, 6, 7], LLI_current_sat)).reshape(len(ismember2([1, 2, 3, 5, 6, 7], LLI_current_sat)),1)
-        # if there are slips
-        if not len(LLI_slips) == 0:
-            ## dummy is logical. It will be 1 at indices where the following
-            ## slip epoch is NOT the epoch following the current slip epoch.
-            ## These will therefor be the indices where slip periods end.
-            ## The last slip end is not detected this way and is inserted manually
-            dummy = np.diff(LLI_slips) !=1 * 1
-            slip_period_ends = np.concatenate((LLI_slips[dummy], LLI_slips[-1]))
-            n_slip_periods = np.sum(dummy) + 1
-            current_slip_periods = np.zeros([n_slip_periods,2])
-            # store slip ends
-            current_slip_periods[:,1] = slip_period_ends
-            # store first slip start manually
-            # store first slip start manually
-            current_slip_periods[0,0] = LLI_slips[0].item() if hasattr(LLI_slips[0], "item") else LLI_slips[0]
-            # Insert remaining slip period starts
-            for k in range(1,n_slip_periods):
-                indx = next(x for x, val in enumerate(LLI_slips) if abs(val) ==  current_slip_periods[k-1, 1])
-                current_slip_periods[k, 0] = LLI_slips[indx + 1]
-        else:
-            current_slip_periods = []
+    for sat in range(n_sat):
+        slip_epochs = np.where(np.isin(LLI_current_phase[:, sat + 1], _LLI_SLIP_CODES))[0]
 
-        LLI_slip_periods[sat] = current_slip_periods
+        if slip_epochs.size == 0:
+            slip_periods[sat] = []
+            continue
 
-    return LLI_slip_periods
+        # Identify boundaries: gaps > 1 between consecutive slip epochs
+        gaps = np.diff(slip_epochs) != 1
+        starts = np.concatenate(([slip_epochs[0]], slip_epochs[1:][gaps]))
+        ends = np.concatenate((slip_epochs[:-1][gaps], [slip_epochs[-1]]))
 
-def ismember2(LLI_codes,LLI_current_sat):
-    """The function takes in arrays, and finds the indencies of where the LLI_current_sat matches LLI_codes"""
-    indx = [i for i, e in enumerate(LLI_current_sat) if e in LLI_codes]
-    return indx
+        slip_periods[sat] = np.column_stack((starts, ends)).astype(float)
+
+    return slip_periods

@@ -29,7 +29,7 @@ sys.path.append(os.path.join(project_path,'src'))
 
 from gnssmultipath import GNSS_MultipathAnalysis
 from gnssmultipath.Geodetic_functions import ECEF2geodb, ECEF2enu, compute_azimut_elev
-from gnssmultipath.PickleHandler import PickleHandler
+from gnssmultipath.utils.PickleHandler import PickleHandler
 
 
 test_data_ECEF2geodb = [

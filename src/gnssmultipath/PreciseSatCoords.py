@@ -4,11 +4,11 @@ from tqdm import tqdm
 import pandas as pd
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict
-from gnssmultipath.readRinexObs import readRinexObs
-from gnssmultipath.SP3Reader import SP3Reader
+from gnssmultipath.readers.readRinexObs import readRinexObs
+from gnssmultipath.readers.SP3Reader import SP3Reader
 from gnssmultipath.SP3Interpolator import SP3Interpolator
 import gnssmultipath.Geodetic_functions as geodf
-from gnssmultipath import PickleHandler
+from gnssmultipath.utils.PickleHandler import PickleHandler
 
 warnings.filterwarnings("ignore")
 
@@ -38,9 +38,9 @@ class PreciseSatCoords:
     def __init__(self, sp3_file: str, rinex_obs_file: str=None, time_epochs: np.ndarray=None, GNSSsystems: Dict=None):
 
         if rinex_obs_file:
-            _,_, _, _, self.time_epochs, _, self.GNSSsystems,\
-            _, _, _, _, _, _, _, _, _, _,\
-            _, _, _, _, _, _, _, _ = readRinexObs(rinex_obs_file)
+            obs_data = readRinexObs(rinex_obs_file)
+            self.time_epochs = obs_data.time_epochs
+            self.GNSSsystems = obs_data.GNSSsystems
         else:
             self.time_epochs = time_epochs
             self.GNSSsystems = GNSSsystems
@@ -83,8 +83,11 @@ class PreciseSatCoords:
         # Convert receiver position to geodetic coordinates
         lat_rec, lon_rec, _ = geodf.ECEF2geodb(a, b, x_rec, y_rec, z_rec)
 
-        # Initialize results
-        results = []
+        # Initialize results as column arrays
+        all_epochs = []
+        all_sats = []
+        all_az = []
+        all_el = []
 
 
         # Progress bar setup
@@ -105,7 +108,7 @@ class PreciseSatCoords:
                 dZ = Z - z_rec
 
                 # Convert from ECEF to ENU (east, north, up)
-                east, north, up = np.vectorize(geodf.ECEF2enu)(lat_rec, lon_rec, dX, dY, dZ)
+                east, north, up = geodf.ECEF2enu_batch(lat_rec, lon_rec, dX, dY, dZ)
 
                 # Calculate azimuth angle and correct for quadrants
                 azimuth = np.rad2deg(np.arctan(east/north))
@@ -122,18 +125,20 @@ class PreciseSatCoords:
                     azimuth = np.where(mask, azimuth, np.nan)
                     elevation = np.where(mask, elevation, np.nan)
 
-                # Store results
-                for epoch, az, el in zip(sat_data['Epoch'], azimuth, elevation):
-                    results.append({
-                        "Epoch": epoch,
-                        "Satellite": satellite,
-                        "Azimuth": az,
-                        "Elevation": el
-                    })
+                # Store results as arrays
+                all_epochs.append(sat_data['Epoch'].to_numpy())
+                all_sats.append(np.full(len(sat_data), satellite))
+                all_az.append(azimuth)
+                all_el.append(elevation)
 
                 pbar.update(1)
 
-        return pd.DataFrame(results)
+        return pd.DataFrame({
+            "Epoch": np.concatenate(all_epochs),
+            "Satellite": np.concatenate(all_sats),
+            "Azimuth": np.concatenate(all_az),
+            "Elevation": np.concatenate(all_el),
+        })
 
 
     @staticmethod

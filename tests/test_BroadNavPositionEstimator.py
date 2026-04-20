@@ -22,7 +22,7 @@ sys.path.append(os.path.join(project_path, 'src'))
 
 from gnssmultipath.BroadNavPositionEstimator import BroadNavPositionEstimator
 from gnssmultipath.SatelliteEphemerisToECEF import SatelliteEphemerisToECEF
-from gnssmultipath.readRinexObs import readRinexObs
+from gnssmultipath.readers.readRinexObs import readRinexObs
 
 
 # Test data paths
@@ -89,9 +89,9 @@ def test_GLONASS_without_initial_coordinates():
     computed_pos = np.array([X, Y, Z])
     computed_clock_error = np.array([dT])
 
-    # Expected coordinates for the receiver
-    expected_coords = np.array([3149782.9046, 598279.0639, 5495355.8332])
-    expected_clock_error = np.array([5.083982295608008e-08])
+    # Expected coordinates for the receiver (updated after GLONASS RK4 sign fix)
+    expected_coords = np.array([3149786.6660, 598277.5607, 5495357.3184])
+    expected_clock_error = np.array([5.647421260687668820e-08])
 
     # Use assert_almost_equal to compare the computed and expected positions
     assert_almost_equal(computed_pos, expected_coords, decimal=3)
@@ -111,9 +111,9 @@ def test_GLONASS_with_initial_coordinates():
     computed_pos = np.array([X, Y, Z])
     computed_clock_error = np.array([dT])
 
-    # Expected coordinates for the receiver
-    expected_coords = np.array([3149782.9046, 598279.0639, 5495355.8332])
-    expected_clock_error = np.array([5.083982295608008e-08])
+    # Expected coordinates for the receiver (updated after GLONASS RK4 sign fix)
+    expected_coords = np.array([3149786.6660, 598277.5607, 5495357.3184])
+    expected_clock_error = np.array([5.647421260157297155e-08])
 
     # Use assert_almost_equal to compare the computed and expected positions
     assert_almost_equal(computed_pos, expected_coords, decimal=3)
@@ -127,8 +127,11 @@ def test_with_arrays_as_input_galileo():
     desired_sys = "E"
     desired_time = np.array([2022, 1, 1, 0, 0, 30.0000000])
     navObj = SatelliteEphemerisToECEF(rinNav,  x_rec, y_rec, z_rec, desired_sys)
-    GNSS_obs, _, _, _, time_epochs, _, GNSSsystems, \
-        obsCodes, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = readRinexObs(rinObs)
+    obs_data = readRinexObs(rinObs)
+    GNSS_obs = obs_data.GNSS_obs
+    time_epochs = obs_data.time_epochs
+    GNSSsystems = obs_data.GNSSsystems
+    obsCodes = obs_data.obsCodes
 
     GNSSPos = BroadNavPositionEstimator(desired_time=desired_time,
                                     desired_system=desired_sys,

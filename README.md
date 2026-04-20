@@ -13,6 +13,7 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
 
 ## Table of Contents
 - [Features](#features)
+- [Methodology](#methodology)
 - [Installation](#installation)
   - [Prerequisites](#prerequisites)
   - [Installing LaTeX (optional)](#installing-latex-optional)
@@ -27,11 +28,13 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
    - [Run analysis without making plots](#run-analysis-without-making-plots)
    - [Run analysis and use the Zstandard compression algorithm (ZSTD) to compress the pickle file storing the results](#run-analysis-and-use-the-zstandard-compression-algorithm-zstd-to-compress-the-pickle-file-storing-the-results)
    - [Read a RINEX observation file](#read-a-rinex-observation-file)
-   - [Read a RINEX navigation file (v.3)](#read-a-rinex-navigation-file-v3)
+   - [Read a RINEX navigation file (v3 or v4)](#read-a-rinex-navigation-file-v3-or-v4)
    - [Read in the results from an uncompressed Pickle file](#read-in-the-results-from-an-uncompressed-pickle-file)
    - [Read in the results from a compressed Pickle file](#read-in-the-results-from-a-compressed-pickle-file)
    - [Estimate the receiver position based on pseudoranges using SP3 file and print the standard deviation of the estimated position](#estimate-the-receiver-position-based-on-pseudoranges-using-sp3-file-and-print-the-standard-deviation-of-the-estimated-position)
    - [Estimate the receiver position based on pseudoranges using RINEX navigation file and print the DOP values](#estimate-the-receiver-position-based-on-pseudoranges-using-rinex-navigation-file-and-print-the-dop-values)
+   - [Estimate the receiver's position based on pseudoranges in the desired CRS](#estimate-the-receivers-position-based-on-pseudoranges-in-the-desired-crs)
+   - [Download GNSS data from CDDIS](#download-gnss-data-from-cddis)
 
 
 
@@ -48,7 +51,8 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
 - Estimates the code multipath for all available signals/codes in the RINEX file.
 - Provides statistics on the total number of cycle slips detected (using both ionospheric residuals and code-phase differences).
 - Supports both RINEX navigation files (broadcast ephemerides) and SP3 files (precise ephemerides).
-- Supports both RINEX v2.xx and v3.xx observation files.
+- Supports RINEX v2.xx, v3.xx, and v4.xx observation files
+- Supports RINEX v3.xx and v4.xx navigation files (including RINEX 4 message types: GPS LNAV, GLONASS FDMA, Galileo INAV/FNAV/IFNV, BeiDou D1/D2/D1D2).
 - Generates various plots, including:
   - Ionospheric delay over time and zenith-mapped ionospheric delay (combined).
   - The multipath effect plotted against time and elevation angle (combined).
@@ -57,10 +61,12 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
   - Polar plots of SNR and multipath.
   - Polar plot of each observed satellite in the system.
   - SNR versus time/elevation.
+  - Azimuth-vs-elevation heatmaps summarizing multipath and C/N₀ across all satellites (combined and per-system).
 - Extracts GLONASS FCN from RINEX navigation files.
 - Detects cycle slips and estimates the multipath effect.
 - Exports results to CSV and a Python dictionary as a Pickle (both compressed and uncompressed formats are supported).
 - Allows selection of specific navigation systems and signal bands for analysis.
+- Includes a built-in CDDIS downloader for fetching GNSS data (navigation, observation, and SP3 files) directly from NASA's CDDIS archive via FTPS.
 - Estimate the approximate position of the receiver using pseudoranges from the RINEX observation file.
   - Supports both SP3 and RINEX navigation files.
   - The software will estimate the receiver's position if it is not provided in the header of the RINEX observation file.
@@ -74,6 +80,95 @@ GNSS Multipath Analysis is a software tool for analyzing the multipath effect on
     - Standard deviation of the estimated position
 
 
+
+
+
+## Methodology
+
+This section documents the formulas, conventions and configuration choices that
+determine how multipath, ionospheric delay, cycle slips and statistics are
+computed. The intent is to make the numbers in the report files
+unambiguous and reproducible.
+
+### Linear combinations
+
+Let $P_1, P_2$ be code pseudoranges (m) on the two selected frequencies and
+$L_1, L_2$ be the corresponding carrier-phase observations converted to
+metres (i.e. cycles multiplied by the wavelength). Define the squared
+frequency ratio
+
+$$\alpha = \left(\frac{f_1}{f_2}\right)^2.$$
+
+The software uses the standard dual-frequency combinations:
+
+- **Ionospheric delay on the first phase signal**
+
+$$I_{L_1} = \frac{1}{\alpha - 1}\bigl(L_1 - L_2\bigr)$$
+
+- **Code multipath on the first range signal** (Estey-Meertens / TEQC form)
+
+$$M_{P_1} = P_1 - \left(1 + \frac{2}{\alpha - 1}\right) L_1 + \frac{2}{\alpha - 1} L_2$$
+
+Multipath estimates are demeaned per ambiguity arc (between consecutive cycle
+slips) so that the carrier-phase ambiguity drops out and the residual
+represents code multipath plus noise.
+
+### Cycle-slip detection
+
+Two independent linear combinations are differenced epoch-to-epoch to flag
+cycle slips:
+
+- the **code-minus-phase** combination $L_1 - P_1$ (`phaseCodeLimit`),
+- the **geometry-free phase** combination $L_1 - L_2$ (`ionLimit`).
+
+A slip is declared whenever the absolute rate of change of either
+combination exceeds its critical value (m/s). Missing observations within a
+satellite arc are treated as slip boundaries so that a new ambiguity arc is
+started after every data gap.
+
+### LLI (Loss of Lock Indicator)
+
+The RINEX 3.0x specification defines the LLI byte bit-by-bit:
+
+| Bit | Value | Meaning |
+| --- | ----- | --- |
+| 0   | 1     | Lost lock between previous and current observation |
+| 1   | 2     | Half-cycle ambiguity / opposite wavelength factor |
+| 2   | 4     | Observation under anti-spoofing |
+
+Only LLI codes with bit 0 set (1, 3, 5, 7) are interpreted as a loss of
+lock. Codes 2, 4 and 6 are RINEX metadata and do **not** trigger a slip.
+
+### Elevation cutoff and weighting
+
+Observations whose satellite elevation is below `cutoff_elevation_angle`
+(default 10°) are excluded from all statistics, and slip periods that
+straddle low-elevation epochs are removed. Missing elevation values
+(`NaN`) are treated as below the cutoff.
+
+The elevation-weighted multipath RMS uses the weight
+
+$$w(E) = \min\!\bigl(4 \sin^2 E,\ 1\bigr),$$
+
+i.e. linear up to 30° and saturated at 1 for $E \ge 30°$. The
+unweighted per-satellite and overall RMS values are computed as
+$\sqrt{\overline{x^2}}$ (true RMS, not standard deviation).
+
+### Coordinate frames, constants and time systems
+
+- ECEF / WGS-84 is used throughout. Earth rotation rate
+  $\omega_e = 7.2921151467\times10^{-5}\ \text{rad s}^{-1}$ is used for both
+  Kepler propagation (GPS / Galileo / BeiDou) and the Sagnac correction.
+- GLONASS broadcast orbits are integrated with RK4 in PZ-90 with
+  $\mu = 3.9860044\times10^{14}\ \text{m}^3 \text{s}^{-2}$ and
+  $J_2 = 1.0826257\times10^{-3}$.
+- Eccentric anomaly is solved with Newton-Raphson and a
+  step-size convergence test of $10^{-12}$ rad.
+- Supported `TIME OF FIRST OBS` time systems: `GPS`, `GAL`, `BDT`. GLONASS
+  observation files using the `GLO` time system are read but the conversion
+  to GPST (3-hour offset plus leap seconds) is **not** applied; results for
+  `GLO`-tagged files should therefore be interpreted with care.
+- Leap seconds: see `Geodetic_functions.get_leap_seconds`.
 
 
 
@@ -154,7 +249,7 @@ for every estimates with elevation angle $\beta$ is below $30^{\circ}$ and $w =1
 		</p>
     * The Multipath effect plotted wrt time and elevation angle (combined)
 		<p align="center">
-			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2018_1sec/Graphs/GLONASS_C1C_C2P_MP_combined.png?raw=true" width="630"/>
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/GLONASS_C1C_MP_combined.png?raw=true" width="630"/>
 		</p>
     * Barplot showing RMS values for each signal and system
 		<p align="center">
@@ -176,7 +271,23 @@ for every estimates with elevation angle $\beta$ is below $30^{\circ}$ and $w =1
 
     * Polar plot of Signal-To-Noise Ratio (SNR)
 		<p align="center">
-			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2018_1sec/Graphs/SNR_Polar_GPS_S2W.png?raw=true" width="630"/>
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/SNR_Polar_GPS_S2W.png?raw=true" width="630"/>
+		</p>
+    * Azimuth-vs-elevation heatmap of multipath (all systems combined)
+		<p align="center">
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/Summary_Multipath_AzEl.png?raw=true" width="630"/>
+		</p>
+    * Azimuth-vs-elevation heatmap of multipath (per system, e.g. GPS)
+		<p align="center">
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/Summary_Multipath_AzEl_GPS.png?raw=true" width="630"/>
+		</p>
+    * Azimuth-vs-elevation heatmap of C/N₀ (SNR) (all systems combined)
+		<p align="center">
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/Summary_SNR_AzEl.png?raw=true" width="630"/>
+		</p>
+    * Azimuth-vs-elevation heatmap of C/N₀ (SNR) (per system, e.g. GPS)
+		<p align="center">
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/Summary_SNR_AzEl_GPS.png?raw=true" width="630"/>
 		</p>
 9. Exporting the results as a pickle file which easily can be imported into python as a dictionary
 10. The results in form of a report get written to a text file with the same name as the RINEX observation file.
@@ -190,7 +301,7 @@ for every estimates with elevation angle $\beta$ is below $30^{\circ}$ and $w =1
 The `GNSS_MultipathAnalysis` function accepts several keyword arguments that allow for detailed customization of the analysis process. Below is a list of the first five arguments:
 
 - **rinObsFilename** (`str`):
-  Path to the RINEX 3 observation file. This is a required argument.
+  Path to the RINEX observation file (v2.xx, v3.xx, or v4.xx). This is a required argument.
 
 - **broadcastNav1** (`Union[str, None]`, optional):
   Path to the first RINEX navigation file. Default is `None`.
@@ -281,7 +392,7 @@ The `GNSS_MultipathAnalysis` function accepts several keyword arguments that all
 
 
 ## Compatibility
-- **Python Versions:** Compatible with Python 3.8 and above.
+- **Python Versions:** Compatible with Python 3.10 and above (tested on 3.10, 3.11, 3.12, and 3.13).
 - **Dependencies:** All dependencies will be automatically installed with `pip install gnssmultipath`.
 
 
@@ -377,12 +488,13 @@ GNSS_obs, GNSS_LLI, GNSS_SS, GNSS_SVs, time_epochs, nepochs, GNSSsystems, \
         readRinexObs(rinObs_file)
 ```
 
-### Read a RINEX navigation file (v.3)
+### Read a RINEX navigation file (v2, v3, or v4)
 ```python
-from gnssmultipath import Rinex_v3_Reader
+from gnssmultipath import RinexNav
 
+# Works with RINEX v2, v3, and v4 navigation files
 rinNav_file = 'BRDC00IGS_R_20220010000_01D_MN.rnx'
-navdata = Rinex_v3_Reader().read_rinex_nav(rinNav_file, data_rate=60)
+navdata = RinexNav.read_nav(rinNav_file, data_rate=60)
 ```
 
 ### Read in the results from an uncompressed Pickle file
@@ -476,6 +588,41 @@ gnsspos, stats = GNSSPositionEstimator(rinObs,
 
 print('Estimated coordinates in ECEF (m):\n' + '\n'.join([f'{axis} = {coord}' for axis, coord in zip(['Easting', 'Northing', 'Height (ellipsoidal)'], np.round(gnsspos[:-1], 3))]))
 ```
+
+
+### Download GNSS data from CDDIS
+
+The built-in `CDDISDownloader` class lets you download GNSS data products directly from NASA's [CDDIS](https://cddis.nasa.gov/) archive via anonymous FTPS. It supports broadcast navigation files (RINEX v2, v3, v4), observation files, SP3 precise orbit files, and multi-GNSS merged navigation files. Downloaded `.gz` and `.Z` files are automatically decompressed.
+
+```python
+from gnssmultipath import CDDISDownloader
+
+# Connect using your email (anonymous FTPS login)
+with CDDISDownloader(username="your_email@example.com") as dl:
+    # Download a RINEX v3 multi-GNSS broadcast navigation file
+    nav_file = dl.download_broadcast_nav(year=2022, doy=1, rinex_version=3,
+                                         output_dir="./gnss_data/nav")
+
+    # Download a RINEX v4 navigation file (DLR)
+    nav_v4 = dl.download_broadcast_nav(year=2023, doy=71, rinex_version=4,
+                                       output_dir="./gnss_data/nav")
+
+    # Download a station observation file
+    obs_file = dl.download_observation(year=2022, doy=1, station="BRUX",
+                                       rinex_version=3,
+                                       output_dir="./gnss_data/obs")
+
+    # Download SP3 precise orbit file
+    sp3_file = dl.download_sp3(year=2022, doy=1, product="igs",
+                               output_dir="./gnss_data/sp3")
+
+    # Download everything for a given day in one call
+    bundle = dl.download_daily_data(year=2022, doy=1, station="BRUX",
+                                    nav_version=3, include_sp3=True,
+                                    output_dir="./gnss_data")
+```
+
+Note: CDDIS uses anonymous FTPS. No Earthdata account registration is needed. A more comprehensive example script is available in [`src/cddis_download_example.py`](src/cddis_download_example.py).
 
 
 ## Some background information on implementation

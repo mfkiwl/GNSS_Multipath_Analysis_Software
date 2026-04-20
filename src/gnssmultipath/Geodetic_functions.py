@@ -2,7 +2,7 @@ from numpy import fix,array,log,fmod,arctan,arctan2,arcsin,sqrt,sin,cos,pi,arang
 import numpy as np
 from datetime import datetime,timedelta
 from datetime import date
-from typing import List, Union, Literal
+from typing import List, Union
 from numpy import ndarray
 import warnings
 warnings.filterwarnings("ignore")
@@ -69,6 +69,38 @@ def ECEF2enu(lat,lon,dX,dY,dZ): ## added this new function 28.01.2023
     return e, n, u
 
 
+def ECEF2enu_batch(lat, lon, dX, dY, dZ):
+    """
+    Vectorized ECEF-to-ENU conversion for a fixed receiver position.
+
+    Parameters
+    ----------
+    lat : float  – Receiver geodetic latitude (radians)
+    lon : float  – Receiver geodetic longitude (radians)
+    dX, dY, dZ : numpy arrays – Coordinate differences (satellite − receiver)
+
+    Returns
+    -------
+    east, north, up : numpy arrays of same shape as dX
+    """
+    if -2*pi < lon < -pi:
+        lon = lon + 2*pi
+    elif pi < lon < 2*pi:
+        lon = lon - 2*pi
+
+    sin_lon = np.sin(lon)
+    cos_lon = np.cos(lon)
+    sin_lat = np.sin(lat)
+    cos_lat = np.cos(lat)
+
+    M = np.array([[-sin_lon,           cos_lon,            0],
+                  [-sin_lat*cos_lon,   -sin_lat*sin_lon,   cos_lat],
+                  [ cos_lat*cos_lon,    cos_lat*sin_lon,   sin_lat]])
+
+    dP = np.array([dX, dY, dZ])   # (3, n)
+    enu = M @ dP                   # (3, n)
+
+    return enu[0], enu[1], enu[2]
 
 
 
@@ -136,7 +168,7 @@ def compute_satellite_azimut_and_elevation_angle(X, Y, Z, xm, ym, zm):
     dZ = (Z - zm)
 
     # Convert from ECEF to ENU (east,north, up)
-    east, north, up = np.vectorize(ECEF2enu)(lat,lon,dX,dY,dZ)
+    east, north, up = ECEF2enu_batch(lat,lon,dX,dY,dZ)
 
     # Calculate azimuth angle and correct for quadrants
     azimuth = np.rad2deg(np.arctan(east/north))
@@ -188,39 +220,25 @@ def compute_azimut_elev(X,Y,Z,xm,ym,zm):
     dZ = (Z - zm)
 
     ## -- Transformerer koordinatene over til lokalttoposentrisk system:
-    if isinstance(X, float): # if only float put in, not list or array
-        east,north,up = ECEF2enu(lat,lon,dX,dY,dZ)
-        ## -- Computes the azimut angle and elevation angel for current coordinates (in degrees)
-        if (east > 0 and north < 0) or (east < 0 and north < 0):
-            az = np.rad2deg(arctan(east/north)) + 180
-        elif east < 0 and north > 0:
-            az = np.rad2deg(arctan(east/north)) + 360
-        else:
-            az = np.rad2deg(arctan(east/north))
-        # elev = arcsin(up/(sqrt(east**2 + north**2 + up**2)))*(180/pi)
+    # Use atan2 (via arctan2) for the azimuth so all four quadrants are handled
+    # automatically and the formula is well-defined when north == 0.
+    if isinstance(X, float):
+        east, north, up = ECEF2enu(lat, lon, dX, dY, dZ)
+        az = np.rad2deg(arctan2(east, north)) % 360.0
         elev = np.rad2deg(atanc(up, sqrt(east**2 + north**2)))
-        if not 0 < elev < 90: # if the satellite is below the horizon (elevation angle is below zero)
+        if not 0 < elev < 90:
             elevation_angle = np.nan
     else:
         east = np.array([]); north = np.array([]); up = np.array([])
-        for i in np.arange(0,len(dX)):
-            east_,north_,up_ = ECEF2enu(lat,lon,dX[i],dY[i],dZ[i])
-            east = np.append(east,east_)
-            north = np.append(north,north_)
-            up = np.append(up,up_)
+        for i in np.arange(0, len(dX)):
+            east_, north_, up_ = ECEF2enu(lat, lon, dX[i], dY[i], dZ[i])
+            east = np.append(east, east_)
+            north = np.append(north, north_)
+            up = np.append(up, up_)
 
-        ## -- Computes the azimut angle and elevation angel for list  coordinates (in degrees)
-        az = []; elev = []
-        for p in np.arange(0,len(dX)):
-            # # Kvadrantkorreksjon
-            if (east[p]> 0 and north[p]< 0) or (east[p] < 0 and north[p] < 0):
-                az.append(np.rad2deg(arctan(east[p]/north[p])) + 180)
-            elif east[p] < 0 and north[p] > 0:
-                az.append(np.rad2deg(arctan(east[p]/north[p])) + 360)
-            else:
-                az.append(np.rad2deg(arctan(east[p]/north[p])))
-            # elev.append(arcsin(up[p]/(sqrt(east[p]**2 + north[p]**2 + up[p]**2)))*(180/pi))
-            elev.append(np.rad2deg(atanc(up, sqrt(east**2 + north**2))))
+        az = (np.rad2deg(arctan2(east, north)) % 360.0).tolist()
+        elev = [np.rad2deg(atanc(up[p], sqrt(east[p]**2 + north[p]**2)))
+                for p in range(len(dX))]
 
     return az,elev
 
@@ -244,316 +262,6 @@ def date2gpstime(year,month,day,hour,minute,seconds):
     tow = tow_0 + hour*3600 + minute*60 + seconds
 
     return week, tow
-
-
-def filter_array_on_system(eph_data,system):
-    """
-    Filtering the array with ephemerids based on system code "G", "E" "C" etc.
-    """
-    mask = np.char.startswith(eph_data[:,0],system)
-    return eph_data[mask]
-
-
-def extract_nav_message(data,PRN,tidspunkt):
-    """
-    Funksjonen samler de satellittene som har de spesifiserte PRN nummrene,
-    samt de som ligger nærmest spesifisert tidspunkt.
-    """
-    samla_data = gathering_sat_by_PRN(data,PRN);
-    Sat_liste = find_message_closest_in_time(samla_data, tidspunkt)
-    return Sat_liste
-
-
-def gathering_sat_by_PRN(data,PRN):
-    """
-    Funksjonen bruker rinex-data i form av array ordnet ved funksjonen read_rinex2_nav eller read_rines3_nav
-    """
-    m = len(data)
-    Sat_data  = np.zeros((1,36))
-    for k in np.arange(0,m):
-        PRN_ = np.array([])
-
-        if len(data[k,0]) == 3: # RINEX v3 navfiles have letters in addition. EX: G01.
-            sat = data[k,0][1::]
-        else:
-            sat = data[k,0]
-
-        if int(sat) == PRN:
-            PRN_ =np.append(PRN_,data[k,:])
-            PRN_ = PRN_.reshape(1,len(PRN_))
-        if np.size(PRN_) != 0:
-            Sat_data  = np.concatenate([Sat_data , PRN_], axis=0)
-
-    if all(Sat_data[0,:].astype(float)) == 0:
-        Sat_data  = np.delete(Sat_data , (0), axis=0)
-
-    return Sat_data
-
-
-def find_message_closest_in_time(data,tow_mot):
-    """
-    Funksjonen plukker ut den linjen i et datasett som ligg nærmest tidspunktet vi ønsker i bestemme koordinatene for.
-    """
-    towSat = [] # Tom liste for å lagre tidspunktene
-    length = len(data)
-    towSat = np.array([])
-    for i in np.arange(0,length):
-        week, tow = date2gpstime(2000 + int(data[i,1]), int(data[i,2]), int(data[i,3]), int(data[i,4]), int(data[i,5]), int(data[i,6]))
-        towSat = np.append(towSat,tow)
-    # Finner verdien som ligger nærmest
-    # index = int(min(abs(tow_mot - towSat)))
-    index = np.abs(tow_mot - towSat).argmin()
-    GNSS_linjer = data[index,:]
-
-    return GNSS_linjer
-
-
-
-
-def Satkoord2(efemerider,tow_mot,xm,ym,zm):
-    """
-    Funksjonen beregner satellittkordinater og korrigerer for jordrotasjonen. Fra keplerelemtenter til ECEF.
-    """
-
-    GM         = 3.986005e14      # Produktet av jordas masse og gravitasjonskonstanten
-    omega_e    = 7.2921151467e-5  # [rad/sek]
-    c          = 299792458        # Lyshastigheten [m/s]
-
-
-    #Leser inn data:
-    M0         = efemerider[13]
-    delta_n    = efemerider[12]
-    e          = efemerider[15]
-    A          = efemerider[17]**2
-    OMEGA      = efemerider[20]
-    i0         = efemerider[22]
-    omega      = efemerider[24]
-    OMEGA_dot  = efemerider[25]
-    i_dot      = efemerider[26]
-    C_uc       = efemerider[14]
-    C_us       = efemerider[16]
-    C_rc       = efemerider[23]
-    C_rs       = efemerider[11]
-    C_ic       = efemerider[19]
-    C_is       = efemerider[21]
-    toe        = efemerider[18]
-
-    n0  = sqrt(GM/A**3)   #(rad/s)
-    t_k = tow_mot - toe
-
-    n_k = n0 + delta_n   #Koorigert  midlere bevegelse
-    M_k = M0 + n_k*t_k   #Midlere anomali (rad/s)
-
-
-    #Beregner eksentrisk anomali
-    E_old = M_k
-    for i in arange(0,10):
-        E = M_k+ e*sin(E_old)
-        dE = fmod(E - E_old, 2*pi)
-        if abs(dE) < 1.e-12:
-           break
-        E_old = E
-
-    E = fmod(E+2*pi,2*pi)
-
-    cosv = (cos(E) - e)/(1 - e*cos(E))
-    sinv = (sqrt(1 - e**2)*sin(E))/(1-e*cos(E))
-    tanv = sinv/cosv
-
-    ## -- Kvadrantkorreksjon
-    if sinv > 0 and cosv < 0 or sinv < 0 and cosv < 0:
-        v = arctan(tanv) + pi
-    elif sinv < 0 and cosv > 0:
-        v = arctan(tanv) + 2*pi
-    else:
-        v = arctan(tanv)
-
-
-    theta   = v + omega
-
-    ## -- Korreksjon på baneparametere:
-    du_k    = C_uc*cos(2*theta) + C_us*sin(2*theta)
-    dr_k    = C_rc*cos(2*theta) + C_rs*sin(2*theta)
-    di_k    = C_ic*cos(2*theta) + C_is*sin(2*theta)
-
-    ## -- Korrigerte baneparametere:
-    u_k     = theta + du_k
-    r_k     = A*(1 - e*cos(E)) + dr_k
-    i_k     = i0 + i_dot*t_k + di_k
-
-
-    ## -- Korrigert lengdegrad for baneplanknuten:
-    OMEGA_k = OMEGA + (OMEGA_dot - omega_e)*t_k - omega_e*toe
-
-
-    ## -- Satelittens posisjon i banen:
-    x = r_k*cos(u_k)
-    y = r_k*sin(u_k)
-
-    ## --ECEF-koordinater for satellitten:
-    X = x*cos(OMEGA_k) - y*sin(OMEGA_k)*cos(i_k)
-    Y = x*sin(OMEGA_k) + y*cos(OMEGA_k)*cos(i_k)
-    Z = y*sin(i_k)
-
-    ## Relativistisk klokkekorreksjon
-    dT_rel = (-2/c**2)*sqrt(A*GM)*e*sin(E)
-
-    ## --Tester om korreksjonen skal utføres.
-    if (abs(xm)) > 1.0 and (abs(ym)) > 1.0 and (abs(zm)) > 1.0:
-        TRANS  = 0
-        TRANS0 = 0.075
-        j = 0
-        while(abs(TRANS0 - TRANS) > 1e-10):
-            j = j +1
-            if (j > 20):
-                print('Feil, Gangtids-rotasjonen konvergerer ikke!')
-                break
-
-            TRANS = TRANS0
-            OMEGA_k = OMEGA + (OMEGA_dot - omega_e)*t_k - omega_e*(toe + TRANS)
-            X = x*cos(OMEGA_k) - y*sin(OMEGA_k)*cos(i_k)
-            Y = x*sin(OMEGA_k) + y*cos(OMEGA_k)*cos(i_k)
-            Z = y*sin(i_k)
-            #Regner ut avstanden mottaker-satellitt
-            dX = (X - xm)
-            dY = (Y - ym)
-            dZ = (Z - zm)
-            DS = sqrt(dX**2 + dY**2 + dZ**2)
-            #Regner ny verdi for signalets gangtid
-            TRANS0 = DS/c
-
-    else:
-        #Jordrotasjonen skal ikke utføres
-        OMEGA_k = OMEGA + (OMEGA_dot - omega_e)*t_k - omega_e*toe
-        X = x*cos(OMEGA_k) - y*sin(OMEGA_k)*cos(i_k)
-        Y = x*sin(OMEGA_k) + y*cos(OMEGA_k)*cos(i_k)
-        Z = y*sin(i_k)
-
-    return X,Y,Z,dT_rel
-
-
-
-def compute_GLO_coord_from_nav(ephemerides, time_epochs):
-    """
-    Function that use broadcast ephemerides (from rinex nav file) and interpolates to current time using 4th order Runge-kutta.
-
-    Parameters:
-
-    ephemerides: A array with ephemerides for current satellite
-    time_epochs: An n_obs X 2 sized array with weeks and tow read from the rinex observation file.
-
-    Return:
-
-
-    """
-    ephemerides[0] = 9999 #reming char from string (ex G01 -> 9999)
-    ephemerides = ephemerides.astype(float)
-
-    ## Read in data:
-    toc = [ephemerides[1],ephemerides[2] ,ephemerides[3] ,ephemerides[4],ephemerides[5],ephemerides[6]] # year,month,day,hour,minute,second
-    week,toc = date2gpstime(int(ephemerides[1]),int(ephemerides[2]) ,int(ephemerides[3]) ,int(ephemerides[4]),int(ephemerides[5]),int(ephemerides[6]))
-    tauN = ephemerides[6]   # SV clock bias (sec) (-TauN)
-    gammaN = ephemerides[7] # SV relative frequency bias (+GammaN)
-
-    # week_rec, tow_rec = time_epochs[0,1]  # extracting tow
-    week_rec, tow_rec = time_epochs  # extracting tow
-    x_te = ephemerides[10]  # X-coordinates at t_e in PZ-90 [km]
-    y_te = ephemerides[14]  # Y-coordinates at t_e in PZ-90 [km]
-    z_te = ephemerides[18]  # Z-coordinates at t_e in PZ-90 [km]
-
-    vx_te = ephemerides[11] # Velocity component at t_e in PZ-90 (v_x) [km/s]
-    vy_te = ephemerides[15] # Velocity component at t_e in PZ-90 (v_y) [km/s]
-    vz_te = ephemerides[19] # Velocity component at t_e in PZ-90 (v_z) [km/s]
-
-    J_x = ephemerides[12]   # Moon and sun acceleration at t_e [km/sec**2]
-    J_y = ephemerides[16]   # Moon and sun acceleration at t_e [km/sec**2]
-    J_z = ephemerides[20]   # Moon and sun acceleration at t_e [km/sec**2]
-
-    ## -- Convert from UTC to GPST by adding leap seconds
-    leap_sec = get_leap_seconds(week,toc) # Get correct leap sec based on date
-    toc_gps_time = toc + leap_sec # convert from UTC to GPST
-
-    ## -- Find time difference
-    if week_rec == week:
-        tdiff = tow_rec - toc_gps_time
-    else:
-        time_eph = format_date_string(week,toc_gps_time)
-        time_rec = format_date_string(week_rec, tow_rec)
-        tdiff = (time_rec - time_eph).total_seconds()
-
-    ## -- Clock correction (except for general relativity which is applied later)
-    clock_err = tauN + tdiff * (gammaN)
-    clock_rate_err = gammaN
-
-    init_state = np.empty(6)
-    init_state[0] = x_te
-    init_state[1] = y_te
-    init_state[2] = z_te
-    init_state[3] = vx_te
-    init_state[4] = vy_te
-    init_state[5] = vz_te
-    init_state = 1000*init_state        # converting from km to meters
-    acc = 1000*np.array([J_x, J_y,J_z]) # converting from km to meters
-    state = init_state
-    tstep = 90
-    if tdiff < 0:
-        tt = -tstep
-    elif tdiff > 0:
-        tt = tstep
-    while abs(tdiff) > 1e-9:
-        if abs(tdiff) < tstep:
-            tt = tdiff
-        k1 = glonass_diff_eq(state, acc)
-        k2 = glonass_diff_eq(state + k1*tt/2, -acc)
-        k3 = glonass_diff_eq(state + k2*tt/2, -acc)
-        k4 = glonass_diff_eq(state + k3*tt, -acc)
-        state += (k1 + 2*k2 + 2*k3 + k4)*tt/6.0
-        tdiff -= tt
-
-    pos = state[0:3]
-    vel = state[3:6]
-    return pos, vel, clock_err, clock_rate_err
-
-
-def format_date_string(week,toc):
-    """
-    Function for formating dates to be able to subtract with seconds and float
-    """
-    year,month,day,hour,min_,sec = np.array(gpstime2date(week, toc))
-    time = str(int(year)) + "/" + str(int(month)) + "/" + str(int(day)) + " " + str(int(hour)) \
-        + ":" + str(int(min_)) + ":" + str(sec)[0:9]
-    sec_dum = time.split(':')[-1]
-    time = time.replace(sec_dum, str(format(float(sec_dum), '.6f'))) # removing decimals if more than 3
-    # time = datetime.datetime.strptime(time, "%Y/%m/%d %H:%M:%S.%f")
-    time = datetime.strptime(time, "%Y/%m/%d %H:%M:%S.%f")
-    return time
-
-
-
-def glonass_diff_eq(state, acc):
-    """
-    State is a vector containing x,y,z,vx,vy,vz from navigation message
-    """
-    J2 = 1.0826257e-3       # Second zonal coefficient of spherical harmonic expression.
-    mu = 3.9860044e14       # Gravitational constant [m3/s2]   (product of the mass of the earth and and gravity constant)
-    omega = 7.292115e-5     # Earth rotation rate    [rad/sek]
-    ae = 6378136.0          # Semi major axis PZ-90   [m]
-    r = np.sqrt(state[0]**2 + state[1]**2 + state[2]**2)
-    der_state = np.zeros(6)
-    if r**2 < 0:
-        return der_state
-    a = 1.5 * J2 * mu * (ae**2)/ (r**5)
-    b = 5 * (state[2]**2) / (r**2)
-    c = -mu/(r**3) - a*(1-b)
-
-    der_state[0:3] = state[3:6]
-    der_state[3] = (c + omega**2)*state[0] + 2*omega*state[4] + acc[0]
-    der_state[4] = (c + omega**2)*state[1] - 2*omega*state[3] + acc[1]
-    der_state[5] = (c - 2*a)*state[2] + acc[2]
-    return der_state
-
-
-
 
 
 def gpstime2date(week, tow):
@@ -711,11 +419,92 @@ def gpstime_to_utc_datefmt(time_epochs_gpstime: np.ndarray) -> list:
 
 def date2gpstime_vectorized(gregorian_date_array):
     """
-    Convert from gregorian dates to GPS time by using
-    np.vectorization.
+    Convert an array of Gregorian dates to GPS time (week number + time-of-week).
+
+    This is the array version of ``date2gpstime``. Instead of looping over
+    each date in Python (via ``np.vectorize``), it computes the result for
+    all dates at once using pure NumPy arithmetic.
+
+    The algorithm works in three steps:
+
+    1. **Gregorian → ordinal day number**
+       Uses the well-known Julian Day Number formula to convert
+       (year, month, day) into a running day count, entirely with integer
+       array arithmetic.  The formula first shifts January and February
+       into months 11–12 of the *previous* year so that the leap-day
+       always falls at the end of the adjusted "year", which makes the
+       month-length term ``(153*m + 2) // 5`` work uniformly.
+
+    2. **Ordinal day → GPS week + fractional week**
+       Subtracts the GPS epoch (6 Jan 1980) ordinal, then divides by 7
+       to get the (fractional) week number.  ``np.fix`` truncates toward
+       zero to obtain the integer week.
+
+    3. **Fractional week → time-of-week (TOW)**
+       The fractional part of the week is scaled to seconds (×604 800)
+       and the intra-day time (hours, minutes, seconds) is added.
+
+    Parameters
+    ----------
+    gregorian_date_array : array_like, shape (N, 6)
+        Each row is ``[year, month, day, hour, minute, second]``.
+
+    Returns
+    -------
+    weeks : np.ndarray, shape (N,)
+        GPS week numbers (rounded to nearest integer).
+    tows : np.ndarray, shape (N,)
+        Time-of-week in seconds (rounded to nearest integer).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> dates = np.array([[2022, 1, 1, 0, 0, 0],
+    ...                   [2022, 1, 1, 12, 30, 15]])
+    >>> weeks, tows = date2gpstime_vectorized(dates)
+    >>> weeks
+    array([2190., 2190.])
+    >>> tows
+    array([518400., 563415.])
     """
-    years, months, days, hours, minutes, seconds = gregorian_date_array.astype(float).astype(int).T
-    weeks, tows = np.vectorize(date2gpstime)(years, months, days, hours, minutes, seconds)
+    arr = np.asarray(gregorian_date_array)
+    years, months, days, hours, minutes, seconds = arr.astype(float).astype(int).T
+
+    # --- Step 1: Gregorian calendar → Julian Day Number (vectorized) ---
+    # Shift Jan (month 1) and Feb (month 2) to months 13/14 of the prior
+    # year so that the leap day is always the last day of the adjusted year.
+    a = (14 - months) // 12            # 1 for Jan/Feb, 0 otherwise
+    y = years - a                      # adjusted year
+    m = months + 12 * a - 3            # adjusted month (0 = March … 11 = Feb)
+
+    # Julian Day Number from the proleptic Gregorian calendar.
+    # The term (153*m + 2)//5 gives the cumulative day count for the
+    # adjusted month, exploiting the pattern of 30/31-day months from
+    # March onward.
+    ordinal = (days
+               + (153 * m + 2) // 5   # cumulative days in adjusted months
+               + 365 * y              # days from full years
+               + y // 4               # leap years every 4 years …
+               - y // 100             # … except every 100 years …
+               + y // 400             # … but every 400 years
+               + 1721119)             # offset to Julian Day epoch
+
+    # --- Step 2: Ordinal → GPS week ---
+    # t0: Python ordinal of the GPS epoch (6 Jan 1980), shifted by +366
+    #     to match the scalar ``date2gpstime`` convention.
+    # t1: Convert our Julian Day Number to the same shifted-ordinal basis
+    #     (subtract 1721425, the JDN↔Python-ordinal offset, then add 366).
+    t0 = date.toordinal(date(1980, 1, 6)) + 366
+    t1 = ordinal - 1721425 + 366
+    week_flt = (t1 - t0) / 7.0
+    weeks = np.fix(week_flt)           # truncate toward zero → integer week
+
+    # --- Step 3: Fractional week → time-of-week in seconds ---
+    tows = ((week_flt - weeks) * 604800.0
+            + hours * 3600
+            + minutes * 60
+            + seconds)
+
     return np.round(weeks), np.round(tows)
 
 

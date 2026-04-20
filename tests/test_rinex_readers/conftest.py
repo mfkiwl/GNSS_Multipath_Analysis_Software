@@ -1,0 +1,85 @@
+"""
+Shared fixtures for RINEX reader tests.
+"""
+import sys
+import os
+import pytest
+
+# Setup project paths
+project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(project_path, 'src'))
+
+TESTDATA_DIR = os.path.join(project_path, "TestData")
+OBS_DIR = os.path.join(TESTDATA_DIR, "ObservationFiles")
+NAV_DIR = os.path.join(TESTDATA_DIR, "NavigationFiles")
+SP3_DIR = os.path.join(TESTDATA_DIR, "SP3")
+
+
+@pytest.fixture(scope="module")
+def rinex304_obs_file():
+    return os.path.join(OBS_DIR, "OPEC00NOR_S_20220010000_01D_30S_MO_3.04_croped.rnx")
+
+
+@pytest.fixture(scope="module")
+def rinex304_obs_full_file():
+    return os.path.join(OBS_DIR, "OPEC00NOR_S_20220010000_01D_30S_MO_3.04.rnx")
+
+
+@pytest.fixture(scope="module")
+def rinex211_obs_file():
+    return os.path.join(OBS_DIR, "gmgd31000_v2_11.20o")
+
+
+@pytest.fixture(scope="module")
+def rinex211_obs_file_2():
+    return os.path.join(OBS_DIR, "p0803430_v211.24o")
+
+
+@pytest.fixture(scope="module")
+def nav_gps_file():
+    return os.path.join(NAV_DIR, "OPEC00NOR_S_20220010000_01D_GN.rnx")
+
+
+@pytest.fixture(scope="module")
+def nav_galileo_file():
+    return os.path.join(NAV_DIR, "OPEC00NOR_S_20220010000_01D_EN.rnx")
+
+
+@pytest.fixture(scope="module")
+def nav_glonass_file():
+    return os.path.join(NAV_DIR, "OPEC00NOR_S_20220010000_01D_RN.rnx")
+
+
+@pytest.fixture(scope="module")
+def nav_beidou_file():
+    return os.path.join(NAV_DIR, "OPEC00NOR_S_20220010000_01D_CN.rnx")
+
+
+@pytest.fixture(scope="module")
+def nav_mixed_file():
+    return os.path.join(NAV_DIR, "BRDC00IGS_R_20220010000_01D_MN.rnx")
+
+
+@pytest.fixture(scope="module")
+def nav_v4_mixed_file():
+    return os.path.join(NAV_DIR, "BRD400DLR_S_20230710000_01D_MN_rin_v4.rnx")
+
+
+@pytest.fixture(scope="module")
+def nav_v2_gps_file():
+    return os.path.join(NAV_DIR, "auto3430_v211.24n")
+
+
+@pytest.fixture(scope="module")
+def sp3_file_2022():
+    return os.path.join(SP3_DIR, "Testfile_20220101.eph")
+
+
+@pytest.fixture(scope="module")
+def sp3_file_2020():
+    return os.path.join(SP3_DIR, "Testfile_2020_11_5.SP3")
+
+
+@pytest.fixture(scope="module")
+def sp3_file_nmbus():
+    return os.path.join(SP3_DIR, "NMBUS_2020 10 30.SP3")

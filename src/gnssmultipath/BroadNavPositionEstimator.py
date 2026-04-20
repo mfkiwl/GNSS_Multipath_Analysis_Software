@@ -4,8 +4,8 @@ import numpy as np
 from typing import Literal
 from gnssmultipath.Geodetic_functions import date2gpstime, date2gpstime_vectorized
 from gnssmultipath.SatelliteEphemerisToECEF import SatelliteEphemerisToECEF, Kepler2ECEF
-from gnssmultipath.readRinexObs import readRinexObs
-from gnssmultipath.StatisticalAnalysis import StatisticalAnalysis
+from gnssmultipath.readers.readRinexObs import readRinexObs
+from gnssmultipath.utils.StatisticalAnalysis import StatisticalAnalysis
 from typing import Tuple, Dict, Optional, Union
 
 
@@ -109,9 +109,11 @@ class BroadNavPositionEstimator:
             self.GNSSsystems = GNSSsystems
             self.obsCodes = obsCodes
         elif rinex_obs_file:
-            self.GNSS_obs, _, _, _, self.time_epochs, _, self.GNSSsystems, \
-                self.obsCodes, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = readRinexObs(
-                    rinex_obs_file)
+            obs_data = readRinexObs(rinex_obs_file)
+            self.GNSS_obs = obs_data.GNSS_obs
+            self.time_epochs = obs_data.time_epochs
+            self.GNSSsystems = obs_data.GNSSsystems
+            self.obsCodes = obs_data.obsCodes
         else:
             raise ValueError(
                 "Either GNSS observation arrays or 'rinex_obs_file' must be provided.")
@@ -478,9 +480,11 @@ if __name__ == "__main__":
     desired_time = np.array([2022, 1, 1, 0, 0, 30.0000000])
     navObj = SatelliteEphemerisToECEF(
         rinNav,  x_rec, y_rec, z_rec, desired_sys)
-    GNSS_obs, _, _, _, time_epochs, _, GNSSsystems, \
-        obsCodes, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = readRinexObs(
-            rinObs)
+    obs_data = readRinexObs(rinObs)
+    GNSS_obs = obs_data.GNSS_obs
+    time_epochs = obs_data.time_epochs
+    GNSSsystems = obs_data.GNSSsystems
+    obsCodes = obs_data.obsCodes
 
     GNSSPos = BroadNavPositionEstimator(desired_time=desired_time,
                                         desired_system=desired_sys,

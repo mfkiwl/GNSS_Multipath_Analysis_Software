@@ -168,15 +168,21 @@ def estimateSignalDelays(range1_Code, range2_Code,phase1_Code, phase2_Code, carr
     if FDMA_used: # denne er inødnendig etter vektoriseringen
         carrier_freq1 = carrier_freq1_list
         carrier_freq2 = carrier_freq2_list
-        alpha = carrier_freq1**2/carrier_freq2**2 # amplfication factor
+        safe_freq1 = np.where(carrier_freq1 != 0, carrier_freq1, 1.0)
+        safe_freq2 = np.where(carrier_freq2 != 0, carrier_freq2, 1.0)
+        alpha = np.where(carrier_freq2 != 0, carrier_freq1**2 / safe_freq2**2, 0.0) # amplfication factor
 
 
     #  Get observations
     range1 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],range1_Code))
     range2 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],range2_Code))
 
-    phase1 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase1_Code))*c/carrier_freq1
-    phase2 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase2_Code))*c/carrier_freq2
+    if FDMA_used:
+        phase1 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase1_Code))*c/safe_freq1
+        phase2 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase2_Code))*c/safe_freq2
+    else:
+        phase1 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase1_Code))*c/carrier_freq1
+        phase2 = create_array_for_current_obscode(GNSS_obs, ismember(obsCodes[currentGNSSsystem],phase2_Code))*c/carrier_freq2
 
     if all(v is None for v in [range1, range2, phase1, phase2]):
         print('ERROR(estimateSignalDelays): Some observations are missing. Check for missing data in RINEX observation file!')
@@ -310,10 +316,12 @@ def create_array_for_current_obscode(GNSS_obs, obscode_idx):
 
     """
     try:
-        code_array = np.stack(list(GNSS_obs.values()))[:, :, obscode_idx]
+        # Extract only the requested obscode column from each epoch to avoid
+        # materializing the full (nepochs, nsats, nobscodes) 3D stack.
+        code_array = np.stack([arr[:, obscode_idx] for arr in GNSS_obs.values()])
         code_array = np.squeeze(code_array)
         code_array[code_array == 0] = np.nan
-    except:
+    except (IndexError, ValueError, KeyError):
         code_array = None
     return code_array
 
@@ -352,18 +360,14 @@ def find_missing_observation(array1,array2,array3=None,array4=None):
     that are missing observations.
     """
     if array3 is not None:
-        mask1 = np.isnan(array1).astype(int)
-        mask2 = np.isnan(array2).astype(int)
-        mask3 = np.isnan(array3).astype(int)
-        mask4 = np.isnan(array4).astype(int)
-        # Combine the masks to create the final result
-        missing_obs_overview = np.maximum.reduce([mask1, mask2, mask3, mask4])
+        missing = np.isnan(array1)
+        missing |= np.isnan(array2)
+        missing |= np.isnan(array3)
+        missing |= np.isnan(array4)
     else:
-        mask1 = np.isnan(array1).astype(int)
-        mask2 = np.isnan(array2).astype(int)
-        # Combine the masks to create the final result
-        missing_obs_overview = np.maximum.reduce([mask1, mask2])
-    return missing_obs_overview
+        missing = np.isnan(array1)
+        missing |= np.isnan(array2)
+    return missing.astype(np.int8)
 
 
 

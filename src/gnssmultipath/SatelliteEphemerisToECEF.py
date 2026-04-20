@@ -10,8 +10,8 @@ from typing import Literal, Optional, List, Union, Tuple
 import numpy as np
 from numpy import ndarray
 from tqdm import tqdm
-from gnssmultipath.Geodetic_functions import date2gpstime_vectorized, get_leap_seconds, gpstime2date_arrays, ECEF2enu, ECEF2geodb
-from gnssmultipath.RinexNav import Rinex_v3_Reader,Rinex_v2_Reader,RinexNav
+from gnssmultipath.Geodetic_functions import date2gpstime_vectorized, get_leap_seconds, gpstime2date_arrays, ECEF2enu, ECEF2enu_batch, ECEF2geodb
+from gnssmultipath.readers.RinexNav import RinexNav
 
 
 
@@ -84,9 +84,9 @@ class GLOStateVec2ECEF:
         while np.any(np.abs(tdiff) > 1e-9):
             tt = np.where(np.abs(tdiff) < tstep, tdiff, tt)
             k1 = self.glonass_diff_eq(state, acc)
-            k2 = self.glonass_diff_eq(state + k1 * tt[:, None] / 2, -acc)
-            k3 = self.glonass_diff_eq(state + k2 * tt[:, None] / 2, -acc)
-            k4 = self.glonass_diff_eq(state + k3 * tt[:, None], -acc)
+            k2 = self.glonass_diff_eq(state + k1 * tt[:, None] / 2, acc)
+            k3 = self.glonass_diff_eq(state + k2 * tt[:, None] / 2, acc)
+            k4 = self.glonass_diff_eq(state + k3 * tt[:, None], acc)
             state += (k1 + 2 * k2 + 2 * k3 + k4) * tt[:, None] / 6.0
             tdiff -= tt
 
@@ -228,13 +228,16 @@ class Kepler2ECEF:
         n_k = n0 + delta_n   # Corrected mean motion (n_k)
         M_k = M0 + n_k*t_k   # Mean anomaly (M_k) [rad]
 
-        # Calculate eccentric anomaly
+        # Solve Kepler's equation E - e*sin(E) = M_k with Newton-Raphson.
+        # Newton converges in 3-4 iterations even
+        # for higher eccentricities and uses an actual step-size criterion.
         E = M_k.copy()
-        for _ in range(10):
-            E = M_k + e * np.sin(E)
-            dE = np.fmod(E - M_k, 2 * np.pi)
-            mask = abs(dE) < 1.e-12
-            if np.all(mask):
+        for _ in range(15):
+            E_old = E
+            f  = E - e * np.sin(E) - M_k
+            fp = 1.0 - e * np.cos(E)
+            E  = E - f / fp
+            if np.all(np.abs(E - E_old) < 1.0e-12):
                 break
 
         cosv = (np.cos(E) - e)/(1 - e*np.cos(E))
@@ -362,11 +365,11 @@ class SatelliteEphemerisToECEF:
             desired_systems = ["G", "R", "E", "C"]
 
         if isinstance(rinex_nav_file, list):
-            self.ephemerides, self.glo_fcn = self.read_a_list_of_nav_files(rinex_nav_file, data_rate=data_rate)
+            self.ephemerides, self.glo_fcn = self.read_a_list_of_nav_files(rinex_nav_file, desired_systems, data_rate=data_rate)
         else:
-            self.nav_data = Rinex_v3_Reader().read_rinex_nav(rinex_nav_file, desired_systems, data_rate=data_rate)
-            self.ephemerides = self.nav_data['ephemerides']
-            self.glo_fcn = self.nav_data['glonass_fcn']
+            self.nav_data = RinexNav.read_nav(rinex_nav_file, desired_GNSS=desired_systems, data_rate=data_rate)
+            self.glo_fcn = self.nav_data.glonass_fcn
+            self.ephemerides = self.nav_data.ephemerides
 
         self.x_rec = x_rec
         self.y_rec = y_rec
@@ -382,22 +385,18 @@ class SatelliteEphemerisToECEF:
         self.total_sats = sum(len(self.prn_overview[sys])for sys in self.available_systems)
 
 
-    def read_a_list_of_nav_files(self, rinex_nav_file, data_rate):
+    def read_a_list_of_nav_files(self, rinex_nav_file, desired_systems, data_rate):
         """
         Reads in a list of RINEX navigation files and merge the data
         into one data array.
         """
         nav_files = [nav_file for nav_file in rinex_nav_file if nav_file != ""]
         nav_datas = []
-        for  nav_file in nav_files:
-            version, header = RinexNav().read_header_lines(nav_file)
-            if version == 2:
-                nav_data = Rinex_v2_Reader().read_rinex_nav(nav_file)
-            elif version == 3:
-                nav_data = Rinex_v3_Reader().read_rinex_nav(nav_file, data_rate=data_rate)
-            nav_datas.append(nav_data['ephemerides'])
+        for nav_file in nav_files:
+            nav_data = RinexNav.read_nav(nav_file, desired_GNSS=desired_systems, data_rate=data_rate)
+            nav_datas.append(nav_data.ephemerides)
         data = np.concatenate(nav_datas, axis=0)
-        glonass_fcn = nav_data.get('glonass_fcn', None)
+        glonass_fcn = nav_data.glonass_fcn
         data = np.unique(data, axis=0) # ensure no duplicates
         return data, glonass_fcn
 
@@ -453,8 +452,7 @@ class SatelliteEphemerisToECEF:
         week_sat, tow_sat = date2gpstime_vectorized(epochs_dates)
         diff = np.abs(tow_sat[:, np.newaxis] - desired_tow)
         closest_indices  = np.argmin(diff, axis=0)
-        closest_indices_repeated = closest_indices[:, np.newaxis].repeat(desired_tow.shape[0], axis=1)[:,0]
-        modified_eph_array = ephemerids_filtered[closest_indices_repeated] # repeting array that contains all ephemerides needed in correct order wrt to observation epochs
+        modified_eph_array = ephemerids_filtered[closest_indices] # array containing ephemerides needed in correct order wrt to observation epochs
         return modified_eph_array
 
 
@@ -497,7 +495,7 @@ class SatelliteEphemerisToECEF:
                     dZ = (Z - self.z_rec)
 
                     # Convert from ECEF to ENU (east,north, up)
-                    east, north, up = np.vectorize(ECEF2enu)(lat,lon,dX,dY,dZ)
+                    east, north, up = ECEF2enu_batch(lat,lon,dX,dY,dZ)
 
                     # Calculate azimuth angle and correct for quadrants
                     azimuth = np.rad2deg(np.arctan(east/north))
@@ -507,8 +505,9 @@ class SatelliteEphemerisToECEF:
                     # Calculate elevation angle
                     elevation = np.rad2deg(np.arctan(up / np.sqrt(east**2 + north**2)))
                     if drop_below_horizon:
-                        elevation = np.where((elevation <= 0) | (elevation >= 90), np.nan, elevation) # Set elevation angle to NaN if not in the range (0, 90)
-                        azimuth = np.where((elevation <= 0) | (elevation >= 90), np.nan, azimuth) # Set elevation angle to NaN if not in the range (0, 90)
+                        bad_mask = (elevation <= 0) | (elevation >= 90)
+                        elevation = np.where(bad_mask, np.nan, elevation) # Set elevation angle to NaN if not in the range (0, 90)
+                        azimuth = np.where(bad_mask, np.nan, azimuth) # Set azimuth to NaN if elevation not in the range (0, 90)
                     # Store azimuth and elevation in the numpy arrays
                     az_array[:,PRN] = azimuth
                     el_array[:,PRN] = elevation
@@ -554,7 +553,7 @@ class SatelliteEphemerisToECEF:
         lat_rec, lon_rec, _ = ECEF2geodb(a, b, x_rec, y_rec, z_rec)
 
         # Convert differences to local ENU (East, North, Up) coordinates
-        east, north, up = np.vectorize(ECEF2enu)(lat_rec, lon_rec, dX, dY, dZ)
+        east, north, up = ECEF2enu_batch(lat_rec, lon_rec, dX, dY, dZ)
 
         # Calculate azimuth angle and correct for quadrants
         azimuth = np.rad2deg(np.arctan(east / north))

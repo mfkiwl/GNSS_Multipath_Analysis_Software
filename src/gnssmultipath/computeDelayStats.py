@@ -160,6 +160,11 @@ def computeDelayStats(ion_delay_phase1, multipath_range1, current_sat_elevation_
     """
     nSat = len(range1_slip_periods)
 
+    # copy inputs so we don't mutate the caller's arrays
+    ion_delay_phase1 = ion_delay_phase1.copy()
+    multipath_range1 = multipath_range1.copy()
+    current_sat_elevation_angles = current_sat_elevation_angles.copy()
+
     # set all 0 values to NaN so they are excluded from stats calculation
     ion_delay_phase1[ion_delay_phase1==0] = np.nan
     multipath_range1[multipath_range1==0] = np.nan
@@ -167,8 +172,12 @@ def computeDelayStats(ion_delay_phase1, multipath_range1, current_sat_elevation_
 
     mean_multipath_range1 = np.nanmean(multipath_range1,axis=0)              # Compute mean
     overall_mean_multipath_range1 = np.nanmean(mean_multipath_range1,axis=0) # overall mean multipath, excluding NaN values
-    rms_multipath_range1 = np.nanstd(multipath_range1,axis=0, ddof=0)        # RMS multipath of each satellite, excluding NaN
-    average_rms_multipath_range1 = np.nanstd(multipath_range1, ddof=0)       # Average RMS multipath, excluding NaN
+    # RMS = sqrt(mean(x^2)). np.nanstd would subtract the per-column mean and
+    # therefore give a slightly different value (the standard deviation), which
+    # is inconsistent with the variable name and with the elevation-weighted
+    # RMS computed below.
+    rms_multipath_range1 = np.sqrt(np.nanmean(multipath_range1 * multipath_range1, axis=0))
+    average_rms_multipath_range1 = np.sqrt(np.nanmean(multipath_range1 * multipath_range1))
 
     #  Weighted RMS multipath
     weights     = current_sat_elevation_angles.copy()
@@ -389,7 +398,7 @@ def computeDelayStats(ion_delay_phase1, multipath_range1, current_sat_elevation_
 
         else:
 
-            ## Set to zero
+            ## Set per-satellite counts to zero (no combined slips for this satellite)
             combined_slip_distribution_per_sat[i]['n_slips_0_10']    = 0
             combined_slip_distribution_per_sat[i]['n_slips_10_20']   = 0
             combined_slip_distribution_per_sat[i]['n_slips_20_30']   = 0
@@ -398,15 +407,6 @@ def computeDelayStats(ion_delay_phase1, multipath_range1, current_sat_elevation_
             combined_slip_distribution_per_sat[i]['n_slips_over50']  = 0
             combined_slip_distribution_per_sat[i]['n_slips_NaN']     = 0
             combined_slip_distribution_per_sat[i]['n_slips_Tot']     = 0
-
-            combined_slip_distribution['n_slips_0_10']   = 0
-            combined_slip_distribution['n_slips_10_20']  = 0
-            combined_slip_distribution['n_slips_20_30']  = 0
-            combined_slip_distribution['n_slips_30_40']  = 0
-            combined_slip_distribution['n_slips_40_50']  = 0
-            combined_slip_distribution['n_slips_over50'] = 0
-            combined_slip_distribution['n_slips_NaN']    = 0
-            combined_slip_distribution['n_slips_Tot']    = 0
 
 
     ## --Amount of range1 observations

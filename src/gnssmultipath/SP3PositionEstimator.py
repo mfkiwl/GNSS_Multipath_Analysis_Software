@@ -10,16 +10,16 @@ import pandas as pd
 from datetime import timedelta, datetime
 from typing import Literal, Tuple, Dict, Optional, Union
 from gnssmultipath.Geodetic_functions import date2gpstime, date2gpstime_vectorized, compute_satellite_azimut_and_elevation_angle, gpstime2date_arrays_with_microsec
-from gnssmultipath.SP3Reader import SP3Reader
+from gnssmultipath.readers.SP3Reader import SP3Reader
 from gnssmultipath.SP3Interpolator import SP3Interpolator
-from gnssmultipath.readRinexObs import readRinexObs
-from gnssmultipath.StatisticalAnalysis import StatisticalAnalysis
+from gnssmultipath.readers.readRinexObs import readRinexObs
+from gnssmultipath.utils.StatisticalAnalysis import StatisticalAnalysis
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 c = 299792458  # Speed of light [m/s]
-OMEGA_EARTH = 7.2921159e-5 # Earth's rotational speed in rad/s
+OMEGA_EARTH = 7.2921151467e-5  # Earth's rotational speed [rad/s]
 
 
 
@@ -79,8 +79,11 @@ class SP3PositionEstimator:
 
         # Load RINEX observation data
         if rinex_obs_file:
-            self.GNSS_obs, _, _, _, self.time_epochs, _, self.GNSSsystems, \
-                self.obsCodes, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = readRinexObs(rinex_obs_file)
+            obs_data = readRinexObs(rinex_obs_file)
+            self.GNSS_obs = obs_data.GNSS_obs
+            self.time_epochs = obs_data.time_epochs
+            self.GNSSsystems = obs_data.GNSSsystems
+            self.obsCodes = obs_data.obsCodes
         else:
             self.GNSS_obs = GNSS_obs
             self.time_epochs = time_epochs

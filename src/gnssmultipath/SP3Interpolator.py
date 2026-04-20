@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from typing import Literal, Tuple
-from gnssmultipath import PickleHandler
-from gnssmultipath.readRinexObs import readRinexObs
-from gnssmultipath.SP3Reader import SP3Reader
+from gnssmultipath.utils.PickleHandler import PickleHandler
+from gnssmultipath.readers.readRinexObs import readRinexObs
+from gnssmultipath.readers.SP3Reader import SP3Reader
 from gnssmultipath.SatelliteEphemerisToECEF import SatelliteEphemerisToECEF, Kepler2ECEF
 from gnssmultipath.Geodetic_functions import date2gpstime, date2gpstime_vectorized, gpstime2date_arrays, gpstime2date_arrays_with_microsec
 from tqdm import tqdm
@@ -38,6 +38,9 @@ class SP3Interpolator:
         self.sp3_dataframe = sp3_dataframe
         self.epoch_interval = epoch_interval
         self.receiver_position = receiver_position  # Receiver ECEF coordinates
+        # Lazy cache: PRN -> (sat_seconds, sat_xyz, sat_clock) sorted by epoch.
+        # Built once on first access via _get_satellite_arrays()/_build_satellite_arrays_cache().
+        self._sat_arrays_cache = None
 
     @staticmethod
     def epoch_to_seconds(epoch):
@@ -76,6 +79,126 @@ class SP3Interpolator:
             for i in range(n - j):
                 y_copy[i] = (x[i + j] * y_copy[i] - x[i] * y_copy[i + 1]) / (x[i + j] - x[i])
         return y_copy[0]
+
+    @staticmethod
+    def _neville_vectorized(x, y):
+        """
+        Batched Neville's polynomial interpolation.
+
+        Parameter:
+        ----------
+        - x: Array of shape (n_obs, n) with x-values per observation epoch.
+        - y: Array of shape (n_obs, n, k) with y-values for k channels per epoch.
+
+        Return:
+        ------
+        - Array of shape (n_obs, k) with the interpolated values at x = 0.
+        """
+        y = y.copy()
+        n = x.shape[1]
+        for j in range(1, n):
+            for i in range(n - j):
+                denom = x[:, i + j] - x[:, i]                       # (n_obs,)
+                num = (x[:, i + j:i + j + 1] * y[:, i, :]
+                       - x[:, i:i + 1] * y[:, i + 1, :])             # (n_obs, k)
+                y[:, i, :] = num / denom[:, None]
+        return y[:, 0, :]
+
+    def _build_satellite_arrays_cache(self):
+        """Build and cache per-PRN sorted (epoch_seconds, xyz, clock) NumPy arrays."""
+        df = self.sp3_dataframe
+        # Compute Epoch_Seconds once for the entire DataFrame
+        base_time = datetime(2000, 1, 1)
+        epochs = df['Epoch'].to_numpy()
+        # Vectorized seconds-since-2000 via pandas datetime conversion
+        epoch_seconds_all = (pd.to_datetime(epochs) - base_time).total_seconds().to_numpy()
+
+        sats = df['Satellite'].to_numpy()
+        xyz_all = df[['X', 'Y', 'Z']].to_numpy()
+        clk_all = df['Clock Bias'].to_numpy()
+
+        cache = {}
+        # Group indices by PRN (single pass over the array)
+        unique_sats, inverse = np.unique(sats, return_inverse=True)
+        for k, prn in enumerate(unique_sats):
+            mask = inverse == k
+            t = epoch_seconds_all[mask]
+            order = np.argsort(t, kind='stable')
+            cache[str(prn)] = (
+                t[order],
+                xyz_all[mask][order],
+                clk_all[mask][order],
+            )
+        self._sat_arrays_cache = cache
+
+    def _get_satellite_arrays(self, prn):
+        """Return (sat_seconds, sat_xyz, sat_clock) for *prn*, building cache if needed."""
+        if self._sat_arrays_cache is None:
+            self._build_satellite_arrays_cache()
+        if prn not in self._sat_arrays_cache:
+            raise ValueError(f"No data found for satellite {prn}.")
+        return self._sat_arrays_cache[prn]
+
+    @staticmethod
+    def _observation_seconds_from_time_epochs(time_epochs):
+        """Convert observation time_epochs (GPS week + TOW) to seconds since 2000-01-01."""
+        if time_epochs.ndim > 1 and time_epochs.shape[-1] == 2 and time_epochs.shape[0] != 2:
+            weeks = time_epochs[:, 0]
+            tows  = time_epochs[:, 1]
+        elif time_epochs.ndim > 1:
+            weeks = time_epochs[0]
+            tows  = time_epochs[1]
+        else:
+            weeks = np.atleast_1d(time_epochs[0])
+            tows  = np.atleast_1d(time_epochs[1])
+        observation_times = gpstime2date_arrays_with_microsec(weeks, tows)
+        # observation_times: array of (Y, M, D, h, m, s, microsec) per epoch
+        base_time = datetime(2000, 1, 1)
+        dt = pd.to_datetime([datetime(int(o[0]), int(o[1]), int(o[2]),
+                                      int(o[3]), int(o[4]), int(o[5]), int(o[6]))
+                             for o in observation_times])
+        return (dt - base_time).total_seconds().to_numpy()
+
+    def _interpolate_satellite_vec(self, sat_seconds, sat_xyz, sat_clock,
+                                   obs_seconds, n_interpol_points=7):
+        """
+        Vectorized interpolation of (X, Y, Z, clock_bias) for one satellite at *obs_seconds*.
+
+        Parameter:
+        ----------
+        - sat_seconds: (n_sp3,) sorted SP3 epoch seconds for the satellite.
+        - sat_xyz:     (n_sp3, 3) SP3 positions for the satellite.
+        - sat_clock:   (n_sp3,)  SP3 clock biases for the satellite.
+        - obs_seconds: (n_obs,)  observation epoch seconds.
+        - n_interpol_points: number of nearest SP3 points to use (default 7).
+
+        Return:
+        ------
+        - (positions, clock_biases) with shapes (n_obs, 3) and (n_obs,).
+        """
+        n_sp3 = sat_seconds.shape[0]
+        n = min(n_interpol_points, n_sp3)
+        n_obs = obs_seconds.shape[0]
+
+        # Find nearest n SP3 indices per observation (O(n_sp3 * n_obs), but cheap in NumPy)
+        abs_diffs = np.abs(sat_seconds[:, None] - obs_seconds[None, :])  # (n_sp3, n_obs)
+        if n_sp3 > n:
+            nearest = np.argpartition(abs_diffs, n - 1, axis=0)[:n, :]
+        else:
+            nearest = np.broadcast_to(np.arange(n_sp3)[:, None], (n_sp3, n_obs)).copy()
+        # Sort along window axis so x is monotonic (better numerical behaviour)
+        nearest = np.sort(nearest, axis=0)                                # (n, n_obs)
+
+        # Build x of shape (n_obs, n) and y of shape (n_obs, n, 4)
+        x = (sat_seconds[nearest] - obs_seconds[None, :]).T               # (n_obs, n)
+        gathered_xyz = sat_xyz[nearest]                                   # (n, n_obs, 3)
+        gathered_clk = sat_clock[nearest]                                 # (n, n_obs)
+        y = np.empty((n_obs, n, 4), dtype=np.float64)
+        y[:, :, 0:3] = np.transpose(gathered_xyz, (1, 0, 2))
+        y[:, :, 3]   = gathered_clk.T
+
+        result = self._neville_vectorized(x, y)                           # (n_obs, 4)
+        return result[:, 0:3], result[:, 3]
 
     def compute_relativistic_correction_single_sat(self, prn, time_epochs):
         """
@@ -123,62 +246,12 @@ class SP3Interpolator:
         ------
         - Interpolated positions and clock biases as a dictionary.
         """
-        # Convert GPS time to datetime objects
-        if len(time_epochs) > 2:
-            observation_times = gpstime2date_arrays_with_microsec(time_epochs[:, 0], time_epochs[:, 1])
-        else:
-            observation_times = gpstime2date_arrays_with_microsec(time_epochs[0], time_epochs[1])
-
-        # Convert observation times to seconds since the reference epoch
-        observation_seconds = np.array([self.epoch_to_seconds(datetime(*obs)) for obs in observation_times])
-
-        # Filter the SP3 DataFrame to include only the specified satellite
-        satellite_data = self.sp3_dataframe[self.sp3_dataframe['Satellite'] == prn].copy()
-
-        if satellite_data.empty:
-            raise ValueError(f"No data found for satellite {prn}.")
-
-        # Convert the 'Epoch' column to seconds since the reference epoch
-        satellite_data['Epoch_Seconds'] = satellite_data['Epoch'].apply(self.epoch_to_seconds)
-
-        # Sort by epoch to ensure consistent ordering
-        satellite_data = satellite_data.sort_values(by='Epoch_Seconds')
-
-        # Extract satellite data for vectorized processing
-        satellite_seconds = satellite_data['Epoch_Seconds'].to_numpy()
-        satellite_positions = satellite_data[['X', 'Y', 'Z']].to_numpy()
-        satellite_clock_bias = satellite_data['Clock Bias'].to_numpy()
-
-        # Compute time differences for all observation times
-        time_diffs = np.abs(satellite_seconds[:, None] - observation_seconds)
-
-        # Find the indices of the nearest points for each observation time
-        nearest_indices = np.argsort(time_diffs, axis=0)[:n_interpol_points, :]
-
-        # Prepare arrays for interpolation
-        interpolated_positions = np.zeros((len(observation_seconds), 3))  # (epochs, X/Y/Z)
-        interpolated_clock_bias = np.zeros(len(observation_seconds))  # (epochs, Clock Bias)
-
-        for obs_idx in range(len(observation_seconds)):
-            # Select nearest points for the current observation time
-            idx = nearest_indices[:, obs_idx]
-            nearest_times = satellite_seconds[idx]
-            nearest_positions = satellite_positions[idx]
-            nearest_clock_biases = satellite_clock_bias[idx]
-
-            # Interpolate positions using Neville's algorithm
-            time_diff = nearest_times - observation_seconds[obs_idx]
-            for i in range(3):  # X, Y, Z
-                interpolated_positions[obs_idx, i] = self.interppol(
-                    time_diff, nearest_positions[:, i], len(nearest_times)
-                )
-
-            # Interpolate clock bias
-            interpolated_clock_bias[obs_idx] = self.interppol(
-                time_diff, nearest_clock_biases, len(nearest_times)
-            )
-
-        return interpolated_positions, interpolated_clock_bias
+        time_epochs = np.asarray(time_epochs)
+        observation_seconds = self._observation_seconds_from_time_epochs(time_epochs)
+        sat_seconds, sat_xyz, sat_clock = self._get_satellite_arrays(prn)
+        return self._interpolate_satellite_vec(
+            sat_seconds, sat_xyz, sat_clock, observation_seconds, n_interpol_points
+        )
 
 
     def interpolate_sat_coordinates(self, time_epochs, gnss_systems, n_interpol_points=7, output_format: Literal["pd.DataFrame", "dict"] = "pd.DataFrame"):
@@ -198,84 +271,41 @@ class SP3Interpolator:
         - Interpolated positions and clock biases in the specified output format.
         """
 
-        # Convert GPS time to datetime objects
+        # Convert GPS time to datetime objects (kept for the optional DataFrame output below)
         if len(time_epochs) > 2:
-            # observation_times = gpstime2date_arrays(time_epochs[:, 0], time_epochs[:, 1])
             observation_times = gpstime2date_arrays_with_microsec(time_epochs[:, 0], time_epochs[:, 1])
         else:
-            # observation_times = gpstime2date_arrays(time_epochs[0], time_epochs[1])
             observation_times = gpstime2date_arrays_with_microsec(time_epochs[0], time_epochs[1])
 
-        # Convert observation times to seconds since the reference epoch
-        observation_seconds = np.array([self.epoch_to_seconds(datetime(*obs)) for obs in observation_times])
+        # Convert observation times to seconds since the reference epoch (vectorized)
+        observation_seconds = self._observation_seconds_from_time_epochs(np.asarray(time_epochs))
+
+        # Build per-satellite NumPy cache once (cheap if already built)
+        if self._sat_arrays_cache is None:
+            self._build_satellite_arrays_cache()
 
         # Create a dictionary to store results for all GNSS systems
         interpolated_positions = {}
 
-        # Progress bar setup
-        total_satellites = sum(
-            len(self.sp3_dataframe[self.sp3_dataframe['Satellite'].str[0] == gnss]['Satellite'].unique())
-            for gnss in gnss_systems
-        )
+        # Pre-group cached PRNs by GNSS system letter
+        prns_by_system = {g: sorted([p for p in self._sat_arrays_cache if p[:1] == g])
+                          for g in gnss_systems}
+        total_satellites = sum(len(v) for v in prns_by_system.values())
         bar_format = '{desc}: {percentage:3.0f}%|{bar}| ({n_fmt}/{total_fmt})'
-        pbar = tqdm(total=total_satellites, desc="Interpolating satellite coordinates", position=0, leave=True, bar_format=bar_format)
+        pbar = tqdm(total=total_satellites, desc="Interpolating satellite coordinates",
+                    position=0, leave=True, bar_format=bar_format)
 
-        # Loop through each GNSS system
         for gnss in gnss_systems:
-            # Filter the SP3 DataFrame to include only the current GNSS system
-            gnss_data = self.sp3_dataframe[self.sp3_dataframe['Satellite'].str[0] == gnss]
-
-            # Initialize dictionary for the current GNSS system
             interpolated_positions[gnss] = {}
-
-            # Interpolate for each satellite in the current GNSS system
-            for satellite in gnss_data['Satellite'].unique():
-                # Filter data for the current satellite
-                satellite_data = gnss_data[gnss_data['Satellite'] == satellite].copy()
-
-                # Convert the 'Epoch' column to seconds since the reference epoch
-                satellite_data['Epoch_Seconds'] = satellite_data['Epoch'].apply(self.epoch_to_seconds)
-
-                # Sort by epoch to ensure consistent ordering
-                satellite_data = satellite_data.sort_values(by='Epoch_Seconds')
-
-                # Extract satellite data for vectorized processing
-                satellite_seconds = satellite_data['Epoch_Seconds'].to_numpy()
-                satellite_positions = satellite_data[['X', 'Y', 'Z']].to_numpy()
-                satellite_clock_bias = satellite_data['Clock Bias'].to_numpy()
-
-                # Compute time differences for all observation times
-                time_diffs = np.abs(satellite_seconds[:, None] - observation_seconds)
-
-                # Find the indices of the nearest points for each observation time
-                nearest_indices = np.argsort(time_diffs, axis=0)[:n_interpol_points, :]
-
-                # Prepare arrays for interpolation
-                interpolated_positions_sat = np.zeros((len(observation_seconds), 3))  # (epochs, X/Y/Z)
-                interpolated_clock_bias = np.zeros(len(observation_seconds))  # (epochs, Clock Bias)
-
-                for obs_idx in range(len(observation_seconds)):
-                    # Select nearest points for the current observation time
-                    idx = nearest_indices[:, obs_idx]
-                    nearest_times = satellite_seconds[idx]
-                    nearest_positions = satellite_positions[idx]
-                    nearest_clock_biases = satellite_clock_bias[idx]
-
-                    # Interpolate positions using Neville's algorithm
-                    time_diff = nearest_times - observation_seconds[obs_idx]
-                    for i in range(3):  # X, Y, Z
-                        interpolated_positions_sat[obs_idx, i] = self.interppol(
-                            time_diff, nearest_positions[:, i], len(nearest_times)
-                        )
-                    # Interpolate clock bias
-                    interpolated_clock_bias[obs_idx] = self.interppol(
-                        time_diff, nearest_clock_biases, len(nearest_times)
-                    )
-
-                # Add to the results dictionary under the current GNSS system
+            for satellite in prns_by_system[gnss]:
+                sat_seconds, sat_xyz, sat_clock = self._sat_arrays_cache[satellite]
+                positions, clock_bias = self._interpolate_satellite_vec(
+                    sat_seconds, sat_xyz, sat_clock,
+                    observation_seconds, n_interpol_points,
+                )
                 interpolated_positions[gnss][satellite] = {
-                    "positions": interpolated_positions_sat,
-                    "clock_bias": interpolated_clock_bias
+                    "positions": positions,
+                    "clock_bias": clock_bias,
                 }
                 pbar.update(1)
 
@@ -283,22 +313,33 @@ class SP3Interpolator:
 
         # If output_format is 'dataframe', convert the dictionary to a DataFrame
         if output_format == "pd.DataFrame":
-            rows = []
+            all_epochs = []
+            all_sats = []
+            all_x = []
+            all_y = []
+            all_z = []
+            all_clk = []
+            epoch_datetimes = [datetime(*t) for t in observation_times]
             for gnss, satellites in interpolated_positions.items():
                 for satellite, data in satellites.items():
                     positions = data["positions"]
                     clock_biases = data["clock_bias"]
-                    for idx, (time, position, clock_bias) in enumerate(zip(observation_times, positions, clock_biases)):
-                        rows.append({
-                            "Epoch": datetime(*time),  # Convert to datetime object
-                            "Satellite": satellite,
-                            "X": position[0],
-                            "Y": position[1],
-                            "Z": position[2],
-                            "Clock Bias": clock_bias
-                        })
+                    n = len(epoch_datetimes)
+                    all_epochs.append(epoch_datetimes)
+                    all_sats.append([satellite] * n)
+                    all_x.append(positions[:, 0])
+                    all_y.append(positions[:, 1])
+                    all_z.append(positions[:, 2])
+                    all_clk.append(clock_biases)
 
-            return pd.DataFrame(rows)
+            return pd.DataFrame({
+                "Epoch": np.concatenate(all_epochs) if all_epochs else [],
+                "Satellite": np.concatenate(all_sats) if all_sats else [],
+                "X": np.concatenate(all_x) if all_x else [],
+                "Y": np.concatenate(all_y) if all_y else [],
+                "Z": np.concatenate(all_z) if all_z else [],
+                "Clock Bias": np.concatenate(all_clk) if all_clk else [],
+            })
 
         return interpolated_positions
 
@@ -369,9 +410,13 @@ if __name__ == "__main__":
     des_time = date2gpstime_vectorized(np.array([desired_time]))[-1]
     xyz_nav = navdata.get_sat_ecef_coordinates(desired_time=des_time, PRN="G01")
 
-    GNSS_obs,_, _, _, time_epochs, nepochs, GNSSsystems,\
-    obsCodes, _, _, tInterval, _, _, _, _, _, _,\
-    _, _, _, _, _, _, _, _ = readRinexObs(rinObs)
+    obs_data = readRinexObs(rinObs)
+    GNSS_obs = obs_data.GNSS_obs
+    time_epochs = obs_data.time_epochs
+    nepochs = obs_data.nepochs
+    GNSSsystems = obs_data.GNSSsystems
+    obsCodes = obs_data.obsCodes
+    tInterval = obs_data.tInterval
 
     observation_times = gpstime2date_arrays(time_epochs[:,0],time_epochs[:,1])
 
