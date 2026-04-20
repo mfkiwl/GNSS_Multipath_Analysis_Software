@@ -35,7 +35,17 @@ class createCSVfile:
         for column in df.columns:
             for prefix, fmt in self.format_rules.items():
                 if column.startswith(prefix):
-                    df[column] = df[column].map(lambda x: fmt.format(x))
+                    # Format only the (already filtered) values and assign
+                    # back as a numpy object array. Going through a plain
+                    # ndarray avoids pandas' Series.map / pd.array dtype
+                    # inference which can attempt to allocate huge temporary
+                    # buffers (e.g. complex128 / int64) for very large
+                    # high-rate datasets and raise MemoryError.
+                    values = df[column].to_numpy()
+                    formatted = np.empty(values.shape, dtype=object)
+                    for i, x in enumerate(values):
+                        formatted[i] = fmt.format(x)
+                    df[column] = formatted
                     break
 
     def extract_multipath_and_put_in_result_dict(self, sys_name):
@@ -109,33 +119,42 @@ class createCSVfile:
             az = self.flatten_result_array(np.round(sys_data["Azimuth"], 2))
             el = self.flatten_result_array(np.round(sys_data["Elevation"], 2))
 
-            # Create a DataFrame for the current system
+            # Build the DataFrame with numeric dtypes (float for Az/El, object
+            # only for PRN/timestamps). Keeping these as floats avoids
+            # constructing large object-dtype arrays up front.
             df = pd.DataFrame({
                 "PRN": prn_repeated,
                 "Time_UTC": timestamps,
-                "Azimuth": az,
-                "Elevation": el
-            }, dtype=object)
+                "Azimuth": np.asarray(az, dtype=float),
+                "Elevation": np.asarray(el, dtype=float),
+            })
 
-            
-            # Add SNR columns to the DataFrame
+            # Add MP columns to the DataFrame
             if any(key.startswith("MP") for key in sys_data.keys()):
                 mp_headers = [header for header in sys_data.keys() if header.startswith("MP_")]
-                for i, header in enumerate(mp_headers):
-                    df[header] = self.flatten_result_array(sys_data[header])
+                for header in mp_headers:
+                    df[header] = np.asarray(
+                        self.flatten_result_array(sys_data[header]), dtype=float
+                    )
 
             # Add SNR columns to the DataFrame
             if any(key.startswith("SNR") for key in sys_data.keys()):
                 snr_headers = [header for header in sys_data.keys() if header.startswith("SNR_")]
-                for i, header in enumerate(snr_headers):
-                    df[header] = self.flatten_result_array(sys_data[header])
-                    
-            # Set specified float formatting on the columns
+                for header in snr_headers:
+                    df[header] = np.asarray(
+                        self.flatten_result_array(sys_data[header]), dtype=float
+                    )
+
+            # Drop rows where the satellite is below the horizon BEFORE
+            # formatting. For high-rate / full-constellation data this
+            # removes the vast majority of rows and prevents the formatting
+            # step from allocating huge temporary buffers.
+            df.dropna(subset=['Elevation'], inplace=True)
+            df.reset_index(drop=True, inplace=True)
+
+            # Set specified float formatting on the (now small) columns
             self.set_float_fmt_dataframe(df)
 
-            # Remove rows where all values except PRN and time are np.nan
-            df[df.columns[2:]] = df[df.columns[2:]].apply(pd.to_numeric, errors='coerce') # Convert selected columns to numeric
-            df.dropna(subset=['Elevation'], inplace=True) # drop rows where the satellite is below the horizon
             output_file = os.path.join(self.output_dir, f"{sys_name}_results.csv")
             print(f'INFO: The result CSV file {output_file} has been written')
             df.to_csv(output_file, index=False, sep=self.column_delimiter)

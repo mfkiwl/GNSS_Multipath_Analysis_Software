@@ -391,6 +391,10 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
             sat_elevation_angles[idx] = data.get('elevation', None)
             sat_azimut_angles[idx] = data.get('azimuth', None)
 
+        # Free intermediate per-satellite DataFrames now that the dense
+        # NumPy arrays have been extracted.
+        del sat_dict, df_az_el, df_sat_coordinates
+
     else:
         nav_files = [broadcastNav1, broadcastNav2, broadcastNav3, broadcastNav4]
         sat_pos, glo_fcn, estimated_position, stats = computeSatElevAzimuth_fromNav(
@@ -510,6 +514,17 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
                     desc=f'Currently processing all available signals for {GNSSsystemName}',
                     position=0, leave=True, bar_format=bar_format)
 
+        # Precompute per-obscode "has any non-zero data" bitmap for this system.
+        # Replaces a large np.stack(GNSS_obs[...].values()) (hundreds of MB at 1 Hz daily).
+        # Each per-epoch array is (nsats, nobscodes); we OR-reduce across epochs into
+        # a single (nobscodes,) bool vector with negligible transient memory.
+        sys_obs_codes = obsCodes[sys + 1][currentGNSSsystem]
+        has_data = np.zeros(len(sys_obs_codes), dtype=bool)
+        for _epoch_arr in GNSS_obs[currentGNSSsystem].values():
+            if has_data.all():
+                break
+            has_data |= np.any(_epoch_arr != 0, axis=0)
+
         for bandNumInd in range(nBands):
             current_band_dict = current_sys_dict[current_sys_dict['Bands'][bandNumInd]]
             currentBandName = current_sys_dict['Bands'][bandNumInd]
@@ -533,7 +548,6 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
                     continue
 
                 # Pre-compute values constant across all secondary band combinations
-                obs_values = np.stack(list(GNSS_obs[currentGNSSsystem].values()))
                 range1_Code_idx = obs_codes_list.index(range1_Code)
                 phase1_Code_idx = obs_codes_list.index(phase1_Code)
                 current_max_sat = int(max_sat[sys].item()) if hasattr(max_sat[sys], "item") else int(max_sat[sys])
@@ -564,10 +578,8 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
                         # Check that signals contain actual data
                         range2_Code_idx = obs_codes_list.index(range2_Code)
                         phase2_Code_idx = obs_codes_list.index(phase2_Code)
-                        if (np.all(obs_values[:, :, range1_Code_idx] == 0) or
-                                np.all(obs_values[:, :, phase1_Code_idx] == 0) or
-                                np.all(obs_values[:, :, range2_Code_idx] == 0) or
-                                np.all(obs_values[:, :, phase2_Code_idx] == 0)):
+                        if not (has_data[range1_Code_idx] and has_data[phase1_Code_idx]
+                                and has_data[range2_Code_idx] and has_data[phase2_Code_idx]):
                             logger.warning(
                                 f"INFO(GNSS_MultipathAnalysis): One or more of the following observation codes "
                                 f"{range1_Code},{phase1_Code} and {phase2_Code} ({GNSSsystemName}),"
@@ -637,6 +649,9 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
                     ok = _plot_with_fallback(use_LaTex, plotResults, plotResults_dont_use_TEX, *plot_args)
                     if not ok:
                         latex_installed = False
+                        # Disable LaTeX for the remainder of the run to avoid
+                        # retrying (and leaking memory) on every signal pair.
+                        use_LaTex = False
 
                 current_band_dict[range1_Code] = current_code_dict
                 pbar.update(1)
@@ -756,9 +771,13 @@ def GNSS_MultipathAnalysis(rinObsFilename: str,
             syst_name = _CODE2NAME[GNSSsystems[syst_key]]
             analysisResults[syst_name]['SNR'] = {}
             curr_obscodes = obsCodes[syst_key][GNSSsystems[syst_key]]
+            sys_obs_dict = GNSS_obs[GNSSsystems[syst_key]]
             for n, code in enumerate(curr_obscodes):
                 if code.startswith('S'):
-                    curr_signal = np.stack(list(GNSS_obs[GNSSsystems[syst_key]].values()))[:, :, n]
+                    # Extract just the n-th obscode column from each per-epoch
+                    # array and stack into (nepochs, nsats); avoids materializing
+                    # the full (nepochs, nsats, nobscodes) 3D copy.
+                    curr_signal = np.stack([arr[:, n] for arr in sys_obs_dict.values()])
                     analysisResults[syst_name]['SNR'][code] = np.squeeze(curr_signal)
 
     # ── Summary heatmaps (issue #55) ───────────────────────────────────────

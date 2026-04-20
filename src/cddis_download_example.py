@@ -148,6 +148,58 @@ def download_observation(
     return obs_file
 
 
+def download_highrate_observation(
+    year: int,
+    doy: int,
+    station: str,
+    output_dir: Union[str, Path] = OUTPUT_DIR / "highrate",
+    convert_to_rnx: bool = True,
+    cleanup_temp_files: bool = True,
+):
+    """
+    Download a full-day 1-second (high-rate) observation file.
+
+    CDDIS stores high-rate data as a daily ``.tar`` archive containing
+    96 Hatanaka-compressed 15-minute segments. The downloader extracts,
+    decompresses, optionally converts (.crx -> .rnx via the ``hatanaka``
+    package), and concatenates them into a single daily file.
+
+    Parameters
+    ----------
+    year : int
+        4-digit year.
+    doy : int
+        Day of year (1-366).
+    station : str
+        9-character station name (e.g. "BRUX00BEL"); a 4-char short name
+        (e.g. "BRUX") is also accepted.
+    output_dir : str or Path
+        Local directory for the merged daily file.
+    convert_to_rnx : bool
+        Convert from Hatanaka .crx to standard .rnx. Default True.
+    cleanup_temp_files : bool
+        If True (default), delete the downloaded .tar archive AND the
+        entire temporary extraction folder of 15-minute segments after
+        merging, so only the merged daily file remains in *output_dir*.
+        Set to False to keep the per-segment files for inspection.
+    """
+    print(f"\nDownloading high-rate (1 Hz) observation file")
+    print(f"  Station: {station}  |  Date: {year} DOY {doy:03d}  |  Output: {output_dir}")
+    print(f"  cleanup_temp_files: {cleanup_temp_files}")
+
+    with CDDISDownloader(username=EMAIL) as dl:
+        merged = dl.download_highrate_observation(
+            year=year,
+            doy=doy,
+            station=station,
+            output_dir=output_dir,
+            convert_to_rnx=convert_to_rnx,
+            cleanup_temp_files=cleanup_temp_files,
+        )
+        print(f"  -> Merged daily file: {merged}")
+    return merged
+
+
 def download_sp3(
     year: int,
     doy: int,
@@ -311,12 +363,19 @@ if __name__ == "__main__":
     # download_multi_gnss_nav(year=2024, doy=153)                   # DLR BRDM
 
     # -- Observation files --
-    download_observation(year=2022, doy=1, rinex_version=2)
+    # download_observation(year=2022, doy=1, rinex_version=2)
     # download_observation(year=2024, doy=1, station="BRUX", rinex_version=3)
     # download_observation(year=2025, doy=1, rinex_version=4)
 
+    # -- High-rate (1 Hz) observation file (downloads tar of 96 x 15-min
+    #    segments, decompresses with hatanaka, merges to one daily file).
+    #    With cleanup_temp_files=True (default), the .tar and the entire
+    #    temp extraction folder are removed so only the merged file remains.
+    # download_highrate_observation(year=2024, doy=1, station="BRUX00BEL")
+
     # -- Broadcast navigation --
-    # download_broadcast_nav(year=2022, doy=1, rinex_version=4)
+    download_broadcast_nav(year=2024, doy=1, rinex_version=3)
+    download_broadcast_nav(year=2024, doy=1, rinex_version=4)
 
     # -- SP3 precise orbits --
     # download_sp3(year=2022, doy=1, product="igs")

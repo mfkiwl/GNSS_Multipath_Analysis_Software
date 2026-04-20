@@ -30,7 +30,9 @@ List files in a remote directory::
 import gzip
 import os
 import re
+import shutil
 import subprocess
+import tarfile
 from datetime import datetime, timedelta
 from ftplib import FTP_TLS
 from pathlib import Path
@@ -217,6 +219,37 @@ class CDDISDownloader:
             return decompressed_path
 
         return local_path
+
+    @staticmethod
+    def _convert_hatanaka(crx_path: Path, remove_crx: bool = True) -> Path:
+        """Convert a Hatanaka-compressed .crx file to standard RINEX .rnx.
+
+        Uses the ``hatanaka`` Python package.
+
+        Parameters
+        ----------
+        crx_path : Path
+            Path to the ``.crx`` file.
+        remove_crx : bool
+            Delete the ``.crx`` after successful conversion.
+
+        Returns
+        -------
+        Path
+            Path to the resulting ``.rnx`` file.
+        """
+        import hatanaka
+
+        rnx_path = crx_path.with_suffix(".rnx")
+        with open(crx_path, "rb") as f:
+            crx_bytes = f.read()
+        rnx_bytes = hatanaka.decompress(crx_bytes)
+        with open(rnx_path, "wb") as f:
+            f.write(rnx_bytes)
+        if remove_crx:
+            crx_path.unlink()
+        print(f"Hatanaka decompressed: {rnx_path}")
+        return rnx_path
 
     # ------------------------------------------------------------------
     # Broadcast navigation files
@@ -425,6 +458,193 @@ class CDDISDownloader:
         remote_path = f"gnss/data/daily/{year}/{ddd}/{subdir}/{filename}"
         local_path = Path(output_dir) / filename
         return self.download_file(remote_path, local_path, decompress=decompress)
+
+    def download_highrate_observation(
+        self,
+        year: int,
+        station: str,
+        doy: Optional[int] = None,
+        month: Optional[int] = None,
+        day: Optional[int] = None,
+        output_dir: Union[str, Path] = ".",
+        convert_to_rnx: bool = True,
+        cleanup_temp_files: bool = True,
+    ) -> Path:
+        """Download a full-day 1-second (high-rate) observation file.
+
+        CDDIS stores high-rate data as a ``.tar`` archive per station per
+        day containing 96 Hatanaka-compressed 15-minute segments
+        (``.crx.gz``).  This method:
+
+        1. Downloads the ``.tar`` or ``.tar.gz`` archive.
+        2. Extracts and decompresses all ``.crx.gz`` segments.
+        3. Optionally converts each ``.crx`` to ``.rnx`` using Hatanaka
+           decompression and concatenates them into a single daily file.
+
+        Parameters
+        ----------
+        year : int
+            4-digit year.
+        station : str
+            9-character station name (e.g. ``"BRUX00BEL"``).  A 4-char
+            short name (e.g. ``"BRUX"``) is also accepted — the method
+            will search the remote directory for a matching file.
+        doy : int, optional
+            Day of year. Provide this OR (month, day).
+        month, day : int, optional
+            Calendar month and day.
+        output_dir : str or Path, optional
+            Local directory for the final file. Default: current dir.
+        convert_to_rnx : bool, optional
+            If True (default), convert from Hatanaka ``.crx`` to standard
+            RINEX ``.rnx``.  Uses the ``hatanaka`` Python package.
+        cleanup_temp_files : bool, optional
+            If True (default), delete the downloaded ``.tar`` archive and
+            all intermediate per-segment files after the merged daily
+            file has been written.  Set to False to keep the individual
+            15-minute segment files for inspection.
+
+        Returns
+        -------
+        Path
+            Path to the merged daily observation file (``.rnx`` or
+            ``.crx`` if *convert_to_rnx* is False).
+
+        Notes
+        -----
+        The ``hatanaka`` package only handles ``.crx`` <-> ``.rnx``
+        conversion; the 15-minute -> 24-hour merging is performed here
+        by keeping the header from the first segment and concatenating
+        the observation epochs from all segments in chronological order.
+        """
+        year, doy_val = _date_to_year_doy(year, month, day, doy)
+        yy = f"{year % 100:02d}"
+        ddd = f"{doy_val:03d}"
+        station = station.upper()
+
+        remote_dir = f"gnss/data/highrate/{year}/{ddd}"
+
+        try:
+            all_files = self.list_directory(remote_dir)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Could not access high-rate directory: {remote_dir}"
+            ) from e
+
+        tar_matches = [
+            f for f in all_files
+            if f.upper().startswith(station[:4]) and ".tar" in f.lower()
+        ]
+        if not tar_matches:
+            raise FileNotFoundError(
+                f"No high-rate tar archive found for station '{station}' "
+                f"in {remote_dir}. Available files: {all_files[:20]}"
+            )
+
+        tar_name = tar_matches[0]
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        tar_local = output_dir / tar_name
+
+        remote_path = f"{remote_dir}/{tar_name}"
+        self.download_file(remote_path, tar_local, decompress=False)
+
+        # If .tar.gz, decompress first
+        if tar_local.suffix == ".gz":
+            plain_tar = tar_local.with_suffix("")
+            with gzip.open(tar_local, "rb") as gz_in:
+                with open(plain_tar, "wb") as f_out:
+                    f_out.write(gz_in.read())
+            tar_local.unlink()
+            tar_local = plain_tar
+
+        # Extract all .crx.gz segments from the tar
+        extract_dir = output_dir / f"_highrate_{station[:4]}_{year}{ddd}"
+        extract_dir.mkdir(parents=True, exist_ok=True)
+
+        with tarfile.open(tar_local, "r") as tf:
+            members = [m for m in tf.getmembers() if m.isfile()]
+            for m in members:
+                m.name = Path(m.name).name
+            tf.extractall(extract_dir, members=members)
+        tar_local.unlink()
+
+        # Decompress .gz files
+        gz_files = sorted(extract_dir.glob("*.gz"))
+        for gz_file in gz_files:
+            out_file = gz_file.with_suffix("")
+            with gzip.open(gz_file, "rb") as gz_in:
+                with open(out_file, "wb") as f_out:
+                    f_out.write(gz_in.read())
+            gz_file.unlink()
+
+        # Convert .crx to .rnx if requested
+        crx_files = sorted(extract_dir.glob("*.crx"))
+        if convert_to_rnx and crx_files:
+            for crx in crx_files:
+                self._convert_hatanaka(crx, remove_crx=cleanup_temp_files)
+            segment_files = sorted(extract_dir.glob("*.rnx"))
+            ext = ".rnx"
+        elif crx_files:
+            segment_files = crx_files
+            ext = ".crx"
+        else:
+            segment_files = sorted(
+                f for f in extract_dir.iterdir() if f.is_file()
+            )
+            ext = segment_files[0].suffix if segment_files else ".rnx"
+
+        if not segment_files:
+            raise FileNotFoundError(
+                f"No observation segments found after extracting {tar_name}"
+            )
+
+        # Build merged daily filename from the first segment's name
+        first_name = segment_files[0].name
+        merged_name = re.sub(
+            r"_\d{2}M_",
+            "_01D_",
+            first_name,
+        )
+        merged_name = re.sub(
+            r"(\d{7})\d{4}_",
+            r"\g<1>0000_",
+            merged_name,
+        )
+        merged_path = output_dir / merged_name
+
+        # Concatenate: keep header from first file, append data from rest
+        header_lines = []
+        data_lines = []
+        for i, seg in enumerate(segment_files):
+            with open(seg, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            eoh_idx = None
+            for j, ln in enumerate(lines):
+                if "END OF HEADER" in ln:
+                    eoh_idx = j
+                    break
+            if eoh_idx is None:
+                data_lines.extend(lines)
+                continue
+            if i == 0:
+                header_lines = lines[: eoh_idx + 1]
+            data_lines.extend(lines[eoh_idx + 1 :])
+
+        with open(merged_path, "w", encoding="utf-8") as f:
+            f.writelines(header_lines)
+            f.writelines(data_lines)
+
+        n_segments = len(segment_files)
+
+        # Clean up segment directory and tar archive if requested
+        if cleanup_temp_files:
+            shutil.rmtree(extract_dir, ignore_errors=True)
+        else:
+            print(f"Kept {n_segments} segment files in {extract_dir}")
+
+        print(f"Merged {n_segments} segments -> {merged_path}")
+        return merged_path
 
     # ------------------------------------------------------------------
     # SP3 precise orbits

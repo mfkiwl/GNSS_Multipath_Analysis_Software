@@ -1,6 +1,8 @@
 import warnings
 import logging
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # non-interactive backend; must be set before pyplot import
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib import rc
@@ -101,7 +103,7 @@ def make_polarplot(analysisResults, graph_dir, use_tex=True):
 
                     filename = 'MP_' + system + "_" + range1_code + '.png'
                     fig.savefig(graph_dir + "/" + filename, dpi=dpi_fig, orientation='landscape', bbox_inches='tight')
-                    plt.close()
+                    plt.close(fig)
 
 
 def make_skyplot(azimut_currentSys, elevation_currentSys, GNSSsystemName, graph_dir, use_tex=True):
@@ -148,6 +150,7 @@ def make_skyplot(azimut_currentSys, elevation_currentSys, GNSSsystemName, graph_
     filename2 = 'Skyplot_' + GNSSsystemName + '.pdf'
     # fig.savefig(graph_dir + "/" + filename, dpi=300, orientation='landscape')
     fig.savefig(graph_dir + "/" + filename2, orientation='landscape',bbox_inches='tight')
+    plt.close(fig)
 
     return
 
@@ -243,7 +246,7 @@ def make_polarplot_SNR(analysisResults, GNSS_obs, GNSSsystems, obsCodes, graphDi
                     ax.scatter(np.radians(sat_az), sat_el, c = abs(SNR_est), cmap = cmap ,marker = 'o', s = 100, edgecolor='none',vmin = vmin, vmax = vmax)
             filename = 'SNR_Polar_' + system + "_" + range1_code + '.png'
             fig.savefig(graphDir + "/" + filename, dpi=dpi_fig, orientation='landscape',bbox_inches='tight')
-            plt.close()
+            plt.close(fig)
 
 
 
@@ -326,7 +329,7 @@ def plot_SNR_wrt_elev(analysisResults, GNSS_obs, GNSSsystems, obsCodes, graphDir
 
             filename = 'SNR_' + system + "_" + range1_code + '.pdf'
             fig.savefig(graphDir + "/" + filename, orientation='landscape',bbox_inches='tight')
-            plt.close()
+            plt.close(fig)
 
 
 def make_polarplot_dont_use_TEX(analysisResults, graph_dir):

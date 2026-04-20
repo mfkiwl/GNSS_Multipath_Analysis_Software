@@ -452,8 +452,7 @@ class SatelliteEphemerisToECEF:
         week_sat, tow_sat = date2gpstime_vectorized(epochs_dates)
         diff = np.abs(tow_sat[:, np.newaxis] - desired_tow)
         closest_indices  = np.argmin(diff, axis=0)
-        closest_indices_repeated = closest_indices[:, np.newaxis].repeat(desired_tow.shape[0], axis=1)[:,0]
-        modified_eph_array = ephemerids_filtered[closest_indices_repeated] # repeting array that contains all ephemerides needed in correct order wrt to observation epochs
+        modified_eph_array = ephemerids_filtered[closest_indices] # array containing ephemerides needed in correct order wrt to observation epochs
         return modified_eph_array
 
 

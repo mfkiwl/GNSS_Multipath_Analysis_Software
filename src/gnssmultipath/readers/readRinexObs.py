@@ -541,21 +541,21 @@ def readRinexObs304(filename, readSS=None, readLLI=None, includeAllGNSSsystems=N
     for k in np.arange(0,nGNSSsystems):
         if GNSSsystems[k+1] == 'G':
             max_sat[k] = max_GPS_PRN
-            GNSS_SVs['G'] = np.zeros([nepochs, int(max_sat[k].item() + 1)])
+            GNSS_SVs['G'] = np.zeros([nepochs, int(max_sat[k].item() + 1)], dtype=np.int16)
             GNSSsystems_full_names[k] = "GPS"
         elif GNSSsystems[k+1] == 'R':
             max_sat[k] = max_GLONASS_PRN
-            GNSS_SVs['R'] = np.zeros([nepochs, int(max_sat[k].item() + 1)])
+            GNSS_SVs['R'] = np.zeros([nepochs, int(max_sat[k].item() + 1)], dtype=np.int16)
             GNSSsystems_full_names[k] = "GLONASS"
 
         elif GNSSsystems[k+1] == 'E':
             max_sat[k] = max_Galileo_PRN
-            GNSS_SVs['E'] = np.zeros([nepochs, int(max_sat[k].item() + 1)])
+            GNSS_SVs['E'] = np.zeros([nepochs, int(max_sat[k].item() + 1)], dtype=np.int16)
             GNSSsystems_full_names[k] = "Galileo"
 
         elif GNSSsystems[k+1] == 'C':
             max_sat[k] = max_Beidou_PRN
-            GNSS_SVs['C'] = np.zeros([nepochs, int(max_sat[k].item() + 1)])
+            GNSS_SVs['C'] = np.zeros([nepochs, int(max_sat[k].item() + 1)], dtype=np.int16)
             GNSSsystems_full_names[k] = "BeiDou"
         else:
             print(f'ERROR(readRinexObs304): Only following GNSS systems are compatible with this program: GPS, GLONASS, Galileo, Beidou. {GNSSsystems[k]} is not valid')
@@ -563,8 +563,8 @@ def readRinexObs304(filename, readSS=None, readLLI=None, includeAllGNSSsystems=N
 
 
         curr_sys = GNSSsystems[k+1]
-        max_sat_k = int(max_sat[k].item()) if hasattr(max_sat[k], "item") else int(max_sat[k])
-        GNSS_obs[curr_sys] = np.zeros([max_sat_k, numOfObsCodes[k], nepochs])
+        # Note: GNSS_obs[curr_sys] is populated as a per-epoch dict below
+        # (e.g. GNSS_obs['G'] = GPS), so no large 3D pre-allocation is needed here.
 
 
         # Preallocation LLI and SS
@@ -2102,27 +2102,27 @@ def readRinexObs211(filename, readSS=None, readLLI=None, includeAllGNSSsystems=N
     for k in range(nGNSSsystems):
         if GNSSsystems[k + 1] == 'G':
             max_sat[k] = max_GPS_PRN
-            GNSS_SVs['G'] = np.zeros([nepochs, max_GPS_PRN + 1])
+            GNSS_SVs['G'] = np.zeros([nepochs, max_GPS_PRN + 1], dtype=np.int16)
             GNSSsystems_full_names[k] = "GPS"
         elif GNSSsystems[k + 1] == 'R':
             max_sat[k] = max_GLONASS_PRN
-            GNSS_SVs['R'] = np.zeros([nepochs, max_GLONASS_PRN + 1])
+            GNSS_SVs['R'] = np.zeros([nepochs, max_GLONASS_PRN + 1], dtype=np.int16)
             GNSSsystems_full_names[k] = "GLONASS"
         elif GNSSsystems[k + 1] == 'E':
             max_sat[k] = max_Galileo_PRN
-            GNSS_SVs['E'] = np.zeros([nepochs, max_Galileo_PRN + 1])
+            GNSS_SVs['E'] = np.zeros([nepochs, max_Galileo_PRN + 1], dtype=np.int16)
             GNSSsystems_full_names[k] = "Galileo"
         elif GNSSsystems[k + 1] == 'C':
             max_sat[k] = max_Beidou_PRN
-            GNSS_SVs['C'] = np.zeros([nepochs, max_Beidou_PRN + 1])
+            GNSS_SVs['C'] = np.zeros([nepochs, max_Beidou_PRN + 1], dtype=np.int16)
             GNSSsystems_full_names[k] = "BeiDou"
         else:
             print(f'ERROR(readRinexObs211): Only following GNSS systems are compatible with this program: GPS, GLONASS, Galileo, Beidou. {GNSSsystems[k]} is not valid')
             return
 
         curr_sys = GNSSsystems[k+1]
-        max_sat_k = int(max_sat[k].item()) if hasattr(max_sat[k], "item") else int(max_sat[k])
-        GNSS_obs[curr_sys] = np.zeros([max_sat_k, numOfObsCodes[k], nepochs])
+        # Note: GNSS_obs[curr_sys] is populated as a per-epoch dict below
+        # (e.g. GNSS_obs['G'] = GPS), so no large 3D pre-allocation is needed here.
 
         # Preallocation LLI and SS
         if readLLI:

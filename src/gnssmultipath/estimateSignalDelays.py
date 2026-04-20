@@ -316,7 +316,9 @@ def create_array_for_current_obscode(GNSS_obs, obscode_idx):
 
     """
     try:
-        code_array = np.stack(list(GNSS_obs.values()))[:, :, obscode_idx]
+        # Extract only the requested obscode column from each epoch to avoid
+        # materializing the full (nepochs, nsats, nobscodes) 3D stack.
+        code_array = np.stack([arr[:, obscode_idx] for arr in GNSS_obs.values()])
         code_array = np.squeeze(code_array)
         code_array[code_array == 0] = np.nan
     except (IndexError, ValueError, KeyError):
@@ -358,18 +360,14 @@ def find_missing_observation(array1,array2,array3=None,array4=None):
     that are missing observations.
     """
     if array3 is not None:
-        mask1 = np.isnan(array1).astype(int)
-        mask2 = np.isnan(array2).astype(int)
-        mask3 = np.isnan(array3).astype(int)
-        mask4 = np.isnan(array4).astype(int)
-        # Combine the masks to create the final result
-        missing_obs_overview = np.maximum.reduce([mask1, mask2, mask3, mask4])
+        missing = np.isnan(array1)
+        missing |= np.isnan(array2)
+        missing |= np.isnan(array3)
+        missing |= np.isnan(array4)
     else:
-        mask1 = np.isnan(array1).astype(int)
-        mask2 = np.isnan(array2).astype(int)
-        # Combine the masks to create the final result
-        missing_obs_overview = np.maximum.reduce([mask1, mask2])
-    return missing_obs_overview
+        missing = np.isnan(array1)
+        missing |= np.isnan(array2)
+    return missing.astype(np.int8)
 
 
 

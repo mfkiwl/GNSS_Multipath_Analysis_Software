@@ -6,8 +6,9 @@ E-mail: per.helge.aarnes@gmail.com
 """
 import os
 import warnings
-import matplotlib.pyplot as plt
 import matplotlib
+matplotlib.use('Agg')  # non-interactive backend; must be set before pyplot import
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import rc
 import pandas as pd
@@ -90,7 +91,6 @@ def plotResults(ion_delay_phase1, multipath_range1, sat_elevation_angles,\
                            multipath figure should be saved.
     --------------------------------------------------------------------------------------------------------------------------
     """
-    matplotlib.use('Agg') # dont want the plots to be displayed.
     n,m = ion_delay_phase1.shape
     plt.rcParams['axes.axisbelow'] = True
     rc('font',**{'family':'serif','serif':['Computer Modern Roman']})
@@ -178,7 +178,7 @@ def plotResults(ion_delay_phase1, multipath_range1, sat_elevation_angles,\
     full_filename2 = graphDir + '/' + filename2
     # fig5.savefig(graphDir + "/" +  filename)
     fig5.savefig(graphDir + "/" +  filename2, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig5)
 
 
     ## ----------- Combine ionospheric delay plots together ------------------
@@ -229,7 +229,7 @@ def plotResults(ion_delay_phase1, multipath_range1, sat_elevation_angles,\
     fig6_name =  GNSSsystemName + '_ionospheric_delay_combined_' + f"{phase1_Code}_{phase2_Code}" + '.pdf'
     # fig6.savefig(graphDir + "/" +  fig6_name)
     fig6.savefig(graphDir + "/" +  fig6_name,bbox_inches='tight')
-    plt.close()
+    plt.close(fig6)
 
     return
 
@@ -291,7 +291,6 @@ def plotResults_dont_use_TEX(ion_delay_phase1, multipath_range1, sat_elevation_a
     --------------------------------------------------------------------------------------------------------------------------
     """
 
-    matplotlib.use('Agg') # dont want the plots to be displayed.
     n,m = ion_delay_phase1.shape
     plt.rcParams['axes.axisbelow'] = True
     rc('text', usetex=False)
@@ -375,7 +374,7 @@ def plotResults_dont_use_TEX(ion_delay_phase1, multipath_range1, sat_elevation_a
     full_filename2 = graphDir + '/' + filename2
     # fig5.savefig(graphDir + "/" +  filename)
     fig5.savefig(graphDir + "/" +  filename2, dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig5)
 
 
     ## ----------- Combine ionospheric delay plots together ------------------
@@ -426,7 +425,7 @@ def plotResults_dont_use_TEX(ion_delay_phase1, multipath_range1, sat_elevation_a
     fig6_name =  GNSSsystemName + '_ionospheric_delay_combined_' + f"{phase1_Code}_{phase2_Code}" + '.pdf'
     # fig6.savefig(graphDir + "/" +  fig6_name)
     fig6.savefig(graphDir + "/" +  fig6_name,bbox_inches='tight')
-    plt.close()
+    plt.close(fig6)
 
     return
 
@@ -438,7 +437,6 @@ def make_barplot(analysisResults,graphDir):
     Saves them as a pdf. If all system are used, all plot will be gathered in one
     subplot. Else one plot for each system.
     """
-    matplotlib.use('Agg') # dont want the plots to be displayed.
     plt.rcParams['axes.axisbelow'] = True
     rc('font',**{'family':'serif','serif':['Computer Modern Roman']})
     rc('text', usetex=True)
@@ -516,6 +514,7 @@ def make_barplot(analysisResults,graphDir):
         fileName = 'Barplot_RMS_all.pdf'
         file_path = os.path.join(graphDir, fileName)
         fig.savefig(file_path, orientation='landscape',bbox_inches='tight')
+        plt.close(fig)
 
 
     ## Then make plot of all availeble system seperate
@@ -598,7 +597,7 @@ def make_barplot(analysisResults,graphDir):
             fileName = 'Barplot_RMS_%s.pdf' % (sys)
             file_path = os.path.join(graphDir, fileName)
             fig.savefig(file_path, orientation='landscape',bbox_inches='tight')
-            # plt.close()
+            plt.close(fig)
 
     return
 
@@ -610,7 +609,6 @@ def make_barplot_dont_use_TEX(analysisResults,graphDir):
     Saves them as a pdf. If all system are used, all plot will be gathered in one
     subplot. Else one plot for each system.
     """
-    matplotlib.use('Agg') # dont want the plots to be displayed.
 
     plt.rcParams['axes.axisbelow'] = True
     rc('text', usetex=False)
@@ -691,6 +689,7 @@ def make_barplot_dont_use_TEX(analysisResults,graphDir):
         fileName = 'Barplot_RMS_all.pdf'
         file_path = os.path.join(graphDir, fileName)
         fig.savefig(file_path, orientation='landscape',bbox_inches='tight')
+        plt.close(fig)
 
 
     ## Then make plot of all availeble system seperate
@@ -774,6 +773,6 @@ def make_barplot_dont_use_TEX(analysisResults,graphDir):
             fileName = 'Barplot_RMS_%s.pdf' % (sys)
             file_path = os.path.join(graphDir, fileName)
             fig.savefig(file_path, orientation='landscape',bbox_inches='tight')
-            # plt.close()
+            plt.close(fig)
 
     return
