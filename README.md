@@ -271,7 +271,7 @@ for every estimates with elevation angle $\beta$ is below $30^{\circ}$ and $w =1
 
     * Polar plot of Signal-To-Noise Ratio (SNR)
 		<p align="center">
-			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/SNR_Polar_GPS_S2W.png?raw=true" width="630"/>
+			<img src="https://github.com/paarnes/GNSS_Multipath_Analysis_Software/blob/master/Results_example/2024_1sec/Graphs/SNR_Polar_GPS_S1C.png?raw=true" width="630"/>
 		</p>
     * Azimuth-vs-elevation heatmap of multipath (all systems combined)
 		<p align="center">
